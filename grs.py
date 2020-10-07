@@ -30,7 +30,8 @@ class RiskScore:
 
 
 	def calc(self, subject):
-		"""This function implements a simple risk score based on a weighted sum"""
+		"""This function implements a simple risk score based on a weighted sum.
+		   subject should be a dict with id:genotype"""
 		wsum = 0
 		for snpid,dosage in subject.items():
 			wsum += self.beta.get(snpid,0) * abs(float(dosage) - (0 if self.direct.get(snpid,True) else 2))
@@ -43,26 +44,31 @@ class oram2016(RiskScore):
 		with open(str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights.txt") as f:
 			return list(csv.DictReader(f))
 
-	def interactions():
+	def hlaweights():
 		with open(str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.interactions.txt") as f:
 			out = {}
 			for line in csv.DictReader(f):
-				beta = line["ODDSRATIO"]
-				out["ID"] = line["ODDSRATIO"]
+				odds = float(line.pop("ODDSRATIO",1))
+				beta = float(line.pop("BETA", math.log(odds)))
+				intid = ";".join(sorted(line.values()))
+				out[intid] = beta
 			return out
 
-	def __init__(self, alt_allele=dict(), factors=weights(), interactions=interactions(), **kwargs):
+	def __init__(self, alt_allele=dict(), factors=weights(), hlafactors=hlaweights(), **kwargs):
 		super().__init__(alt_allele=alt_allele, factors=factors, **kwargs)
-		print(interactions)
+		self.hla = hlafactors
 		self.N = 2 * (self.N + 1)
 
-	def calc_oramhla(arg):
+	def calc_oramhla(self, subject):
+		"""Ah Shit! This crap doesn't work because I cannot re-construct the crappy keys for self.hla. Need a better/smarter way here!"""
+		print(self.hla)
+		subject
 		return 0
 
 	def calc(self, subject):
 		wsum = super().calc(subject)
 		print(wsum)
-		print(wsum + self.calc_oramhla())
+		print(wsum + self.calc_oramhla(subject))
 		return wsum
 
 
