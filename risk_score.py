@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 #
 #  risk score ???
 #
@@ -23,64 +25,63 @@
 
 # Notes and TODOs:
 
-# 	So, Vincent's script is primarily an R script.
-#	Check out rpy2 (Written by Laurent :-) )
-
-
-
-
-
-
-
-
-
 
 
 ##################################################
 #
-# --%%  BEGIN: Perform Basic Setup  %%--
-#
+# --%%  RUN: Perform Basic Setup  %%--
 
 Version = "0.1 (Development Version)"
 
 import argparse
-import rpy2
+import pkcsv as csv
+import pksnps as snps
+import pkrs as riskscore
 import sys
  
-print(rpy2.__version__)
-# import rpy2.robjects as robjects
-from rpy2.robjects.packages import importr
-# import R's "base" package
-#base = importr('base')
+# --%%  END: Perform Basic Setup  %%--
+#
+##################################################
 
-# import R's "utils" package
-#utils = importr('utils')
 
 
 ##################################################
 #
-# --%%  BEGIN: Subroutines  %%--
-#
+# --%%  RUN: Subroutines  %%--
 
 def showversion():
 	print(Version)
 	sys.exit(0)
 
-
+def get_algorithm(args):
+	snpalts = snps.alt(snps.ReadInfo(args.info))
+	if args.oram2016:
+		grs = riskscore.oram2016(snpalts)
+	else:
+		sys.exit("Algorithm Error!")
+	return grs
 
 
 
 ##################################################
 #
-# --%%  BEGIN: Main Program  %%--
+# --%%  RUN: Main Program  %%--
 
 # Setup ArgParse Here...
 
 def setup_args():
 	parser = argparse.ArgumentParser(description="THIS SCRIPT IS STILL EXPERIMENTAL; USE WITH CAUTION",
 	                         epilog="Fisk")
-	parser.add_argument('-v', '--version', action='store_true', help="Print Version and exit.")
+	parser.add_argument('--oram2016', const="risk_score/oram2016.weights_hla.txt", default="", nargs="?",
+		help="Oram et al 2016")
+	parser.add_argument('-v', '--version', action="store_true", help="Print Version and exit.")
+# geno file
+# info file
+# choice of algorithm
+# optional weights file
 	args = parser.parse_args()
+	args.geno = "/home/fls530/projects/grs_t1d_translate/inter99/oram.geno.csv"
+	args.info = "/home/fls530/projects/grs_t1d_translate/inter99/oram.info.csv"
 	if args.version:
 		showversion()
 	return args
@@ -89,11 +90,18 @@ def setup_args():
 # Execute Main Program from Here
 
 def main(args):
+	grs = get_algorithm(args)
+
+# loop over input
+	with open(args.geno) as f:
+		for geno in csv.DictReader(f):
+			subjectid = geno.pop("")
+			print(subjectid + "\t" + str(grs.calc(geno)))
 	return 0
 
 if __name__ == '__main__':
-	Args = setup_args()
-	state = main(Args)
+	args = setup_args()
+	state = main(args)
 	sys.exit(state)
 
 # --%%  END: Main program  %%--
