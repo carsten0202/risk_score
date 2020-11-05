@@ -31,14 +31,12 @@
 #
 # --%%  RUN: Perform Basic Setup  %%--
 
-Version = "0.4 (Development Version)"
+Version = "0.1 (Development Version)"
 
-import click
-import pathlib
+import argparse
 import pkcsv as csv
 import pksnps as snps
 import pkrs as riskscore
-import re
 import sys
  
 # --%%  END: Perform Basic Setup  %%--
@@ -46,110 +44,74 @@ import sys
 ##################################################
 
 
-EPILOG_FileFormat = """
-Column-Based Datafiles:
-Several options accept files containing data in tables/columns. Columns separators are auto-detected from the input and should work for tab-separated files, comma-seperated (csv) files, and space separated files. 
-The file must have one and only one headline as columns are identified by name. The column order is ignored.
-
-Any column name not recognized is ignored. Recognized names are:
-ALLELE    - Identification of the weighted allele. Usually given as a nucleotide. 
-BETA      - The weight to be used. Used unmodified. Takes precedent over 'ODDSRATIO'.
-CHROM     - Chromosome name or number.
-ODDSRATIO - If given without a 'BETA' column, then the natural logarithm of these values will be used as weights. If 'BETA' is given, then this column is ignored.
-POS       - Chromosomal Position.
-POSID     - An identifier of the type CHR:POS.
-
-"""
-
-
-##################################################
-#
-# --%%  RUN: Commands  %%--
-
-class StdCommand(click.Command):
-	def __init__(self, *args, **kwargs):
-		super().__init__(*args, **kwargs)
-		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help='Info file.'))
-		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help='Geno file.'))
-		self.epilog = "Test:" + EPILOG_FileFormat
-
-@click.group()
-@click.version_option(version=Version)
-def main():
-	"""THIS SCRIPT IS STILL EXPERIMENTAL; USE WITH CAUTION"""
-	pass
-
-@main.command(cls=StdCommand)
-@click.option('-w','--weights', type=click.File(), default=None,
-              help="Single locus risk weights file.")
-def aggregate(geno, info, weights):
-	"""Calculate Aggregate Gene Risk Score from user-provided weights."""
-	check_args(geno, info, weights)
-	snpinfo = snp.ReadInfo(info)
-	grs = riskscore.RiskScore(snpinfo, risks=weights)
-	process_geno(geno, grs)
-
-@main.command(cls=StdCommand)
-@click.option('-m','--multilocus',  type=click.File(), default=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights.multilocus.txt", 
-              help="Multilocus risk weights.")
-@click.option('-w','--weights', type=click.File(), default=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights.txt", 
-              help="Single locus risk weights file.")
-def oram2016(geno, info, weights, multilocus):
-	"""Calculate Gene Risk Score based on Oram et al 2016."""
-	check_args(geno, info, weights, multilocus)
-	snpinfo = snps.ReadInfo(info)
-	grs = riskscore.oram2016(snpinfo, risks=weights, multirisks=multilocus)
-	process_geno(geno, grs)
-
-@main.command(cls=StdCommand)
-@click.option('-m','--multilocus',  type=click.File(), default=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/sharp2019.weights.multilocus.txt", 
-              help="Multilocus risk weights.")
-@click.option('-w',"--weights", type=click.File(), default=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/sharp2019.weights.txt", 
-              help='Single locus risk weights file.')
-def sharp2019(geno, info, weights, multilocus):
-	"""Calculate Gene Risk Score based on Sharp et al 2019. (DO NOT USE: UNDER DEVELOPMENT)."""
-	check_args(geno, info, weights, multilocus)
-	snpinfo = snps.ReadInfo(info)
-	grs = riskscore.sharp2019(snpinfo, risks=weights, multirisks=multilocus)
-	process_geno(geno, grs)
-
-@main.command()
-@click.option('--vcf', type=click.File(), help="Load VCF File")
-def test(vcf):
-	"""For testing purposes; Do Not Use!"""
-	import vcf as vcf_
-	vcfiter = vcf_.Reader(vcf)
-
-# --%%  END: Commands  %%--
-#
-##################################################
-
-
-
 
 ##################################################
 #
 # --%%  RUN: Subroutines  %%--
 
-def check_args(geno, info, *args):
-	if not (geno and info):
-		sys.exit("ERROR: No input files specified, add both '--geno' and '--info' options.")
-	return 1
+#def showversion():
+#	print(Version)
+#	sys.exit(0)
 
-# Should probably write an actual parser function which converts geno to instances of my genotype class...
-def process_geno(geno, grs):
-	for gtype in csv.DictReader(geno):
-		subjectid = gtype.pop("")
-		for k in gtype:
-			gtype[k] = sum(float(x) for x in re.split("[/|]+", gtype[k])) 
-		print(subjectid + "\t" + str(grs.calc(gtype)))
+def get_algorithm(args):
+	snpinfo = snps.ReadInfo(args.info)
+	if args.oram2016:
+		grs = riskscore.oram2016(snpinfo)
+	else:
+		sys.exit("Algorithm Error!")
+	return grs
 
-# --%%  END: Subroutines  %%--
+
+
+##################################################
+#
+# --%%  RUN: Main Program  %%--
+
+# Setup ArgParse Here...
+
+def setup_args():
+	parser = argparse.ArgumentParser(description="THIS SCRIPT IS STILL EXPERIMENTAL; USE WITH CAUTION",
+	                         epilog="Fisk")
+	parser.add_argument('-g', '--geno', default=None,
+		help="Geno file")
+	parser.add_argument('-i', '--info', default=None,
+		help="Info file")
+	parser.add_argument('--oram2016', const="risk_score/oram2016.weights_hla.txt", default="", nargs="?",
+		help="Oram et al 2016")
+	parser.add_argument('-v', '--version', action='version', version=Version, help="Print Version and exit.")
+# choice of algorithm
+# optional weights file
+	args = parser.parse_args()
+	if not (args.geno or args.info):
+		parser.error('No input files specified, add --geno or --info (or both)')
+	args.info = args.info if args.info else [args.geno.replace(".geno.",".info.")]
+#	if args.version:
+#		showversion()
+	return args
+
+
+# Execute Main Program from Here
+
+def main(args):
+	grs = get_algorithm(args)
+
+# loop over input
+	with open(args.geno) as f:
+		for geno in csv.DictReader(f):
+			subjectid = geno.pop("")
+			print(subjectid + "\t" + str(grs.calc(geno)))
+	return 0
+
+if __name__ == '__main__':
+	args = setup_args()
+	state = main(args)
+	sys.exit(state)
+
+# --%%  END: Main program  %%--
 #
 ##################################################
 
 
-if __name__ == '__main__':
-	main()
+
 
 
