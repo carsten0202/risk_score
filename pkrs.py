@@ -10,80 +10,74 @@ Just like th 're' module; you pre-complie a GRS based on a dict of alt alleles a
 """
 
 import math
-import pkcsv as csv
 import pathlib
+import pkcsv as csv
+import pksnps
 
 class RiskScore:
-	"""A template object for holding the definition of a weight-based risk score"""
-	def __init__(self, factors=None, alt_allele=dict()):
-		self.allele = dict() # All of these should be dicts (OrderedDicts are acceptable); indexed by appropriate id (snpid?)
+	"""An algorithm template object for holding the definition of a weight-based risk score.
+	   Input should be an iterable of SNPs and an iterable of Alleles (with BETA defined)"""
+	def __init__(self, snps, risks):
 		self.beta   = dict()
-		self.odds   = dict()
-		if isinstance(factors, dict):
-			self.N = len(factors)
-			for fac in factors.values():
-				self.append(fac)
-		elif isinstance(factors, list):
-			self.N = len(factors)
-			for fac in factors:
-				self.append(fac)
-		else:
-			raise SystemExit("Unable to process 'factor' argument. Please provide either a list-o-dicts or a dict-o-dicts")
-		self.direct = {k:(v == alt_allele.get(k, v)) for k,v in self.allele.items()}
+		self.direct = dict()
+		if isinstance(risks, dict):
+			risks = risks.values()
+		self.N = len(risks)
+		if isinstance(snps, dict):
+			snps = snps.values()
+		self.snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
+#		raise SystemExit("Unable to process 'factor' argument. Please provide either a list-o-dicts or a dict-o-dicts")
+		for snp in snps:
+			for risk in risks:
+				if snp == risk:
+					self.beta[snp.ID]   = risk.get("BETA",0)
+					self.direct[snp.ID] = risk.get("ALLELE",object()) == snp.ALT
 
-	def append(self, factor):
-		facid = factor["SNPID"]
-		self.allele[facid] = factor.get("ALLELE", None)
-		self.odds[facid] = float(factor.get("ODDSRATIO", None))
-		self.beta[facid] = float(factor.get("BETA", math.log(self.odds[facid])))
-
-
-	def calc(self, snpdict):
+	def calc(self, gtdict):
 		"""This function implements a simple risk score based on a weighted sum.
-		   Subject should be a dict with str(id):float(allele)"""
+		   Subject should be a dict with str(id):float(genotype_score)"""
 		wsum = 0
-		for snpid,allele in snpdict.items():
-			wsum += self.beta.get(snpid,0) * abs(float(allele) - (0 if self.direct.get(snpid,True) else 2))
-		return (wsum / self.N)
+		for gtid,score in gtdict.items():
+			wsum += self.beta.get(gtid,0) * abs(float(score) - (0 if self.direct.get(gtid,True) else 2))
+		return wsum / self.N
+
 
 
 class oram2016(RiskScore):
-	"""Oram et al 2016"""
-	def weights():
-		with open(str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights.txt") as f:
-			return list(csv.DictReader(f))
-
-	def hlaweights():
-		with open(str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights_hla.txt") as f:
-			import collections
-			dict_dicts = collections.defaultdict(lambda: collections.defaultdict(float))
-			for line in csv.DictReader(f):
-				odds = float(line.pop("ODDSRATIO",1))
-				beta = float(line.pop("BETA", math.log(odds)))
-				(id1,id2) = sorted(line.values())
-				dict_dicts[id1][id2] = beta
-			return dict_dicts
-
-	def __init__(self, alt_allele=dict(), factors=weights(), hlafactors=hlaweights(), **kwargs):
-		super().__init__(alt_allele=alt_allele, factors=factors, **kwargs)
-		self.hla = hlafactors
+	"""Calculate GRS based on Oram et al 2016"""
+	def __init__(self, snps, risks=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights.txt", hlafactors=str(pathlib.Path(__file__).resolve().parent.absolute()) + "/oram2016.weights_hla.txt", **kwargs):
+		super().__init__(snps=snps, risks=pksnps.ReadRisk(risks) if isinstance(risks, str) else risks, **kwargs)
+		self.hla = self.hlaweights(hlafactors) # self.hla is a dict_dicts using 'GenoType's as keys.
 		self.N = 2 * (self.N + 1)
 
-	def calc_oramhla(self, snpdict):
-		"""Calculate the HLA-part of Oram2016. Snpdict should have the format {str(id):float(allele)}"""
+	def calc_oramhla(self, gtdict):
+		"""Calculate the HLA-part of Oram2016. Gtdict should have the format {str(id):float(allele)}"""
 		wsum = 0
-		for id1 in self.hla:
-			for id2 in self.hla[id1]:
-				snpid1,allele1 = id1.split("_")
-				snpid2,allele2 = id2.split("_")
-				if snpid1 in snpdict and int(allele1) == round(float(snpdict[snpid1])) and \
-				   snpid2 in snpdict and int(allele2) == round(float(snpdict[snpid2])):
-					wsum += self.hla[id1][id2]
+		gts  = [s.genotype(dosage=gtdict[i]) for i,s in self.snps.items()]
+		gtsd = dict(zip([gt.ID for gt in gts],gts))
+		for gt1 in self.hla:
+			for gt2 in self.hla[gt1]:
+				if gt1 in gtsd and gt2 in gtsd:
+					wsum += self.hla[gt1][gt2]
 		return (wsum / self.N)
 
-	def calc(self, snpdict, **kwargs):
-		wsum = super().calc(snpdict, **kwargs)
-		return wsum + self.calc_oramhla(snpdict)
+	def calc(self, gtdict, **kwargs):
+		wsum = super().calc(gtdict, **kwargs)
+		return wsum + self.calc_oramhla(gtdict)
+
+	def hlaweights(self, factors=None):
+		import collections
+		dict_dicts = collections.defaultdict(lambda: collections.defaultdict(float))
+		if isinstance(factors, str):
+			with open(factors) as f:
+				for line in csv.DictReader(f):
+					beta = float(line.get("BETA", math.log(float(line.get("ODDSRATIO")))))
+					gt1 = pksnps.GenoType(CHROM=line.get("CHROM_1"), POS=line.get("POS_1"), hhh=line.get("ID_1"), genotype=line.get("GENOTYPE_1"))
+					gt2 = pksnps.GenoType(CHROM=line.get("CHROM_2"), POS=line.get("POS_2"), hhh=line.get("ID_2"), genotype=line.get("GENOTYPE_2"))
+					dict_dicts[gt1][gt2] = beta
+		else:
+			return NotImplemented
+		return dict_dicts
 
 
 class sharp2016(RiskScore):
