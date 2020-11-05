@@ -13,12 +13,9 @@ magic_dict = {
 class gzFile(click.File):
 	def convert(self, value, param, ctx):
 		f = super().convert(value, param, ctx)
-
 		if self._getziptype(f) is not None:
-			gf = io.TextIOWrapper(gzip.GzipFile(fileobj=f))
-			print(gf.readline())
-		sys.exit("Hello")
-		return gf
+			return io.TextIOWrapper(gzip.GzipFile(fileobj=f))
+		return f
 
 	@staticmethod
 	def _getziptype(f):
