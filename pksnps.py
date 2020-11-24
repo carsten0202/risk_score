@@ -9,7 +9,7 @@ import math
 import pkcsv as csv
 import re
 import sys
-from collections import OrderedDict, UserDict
+from collections import OrderedDict, namedtuple, UserDict
 
 
 
@@ -30,6 +30,8 @@ class Locus(UserDict):
 		self["POS"]   = int(POS) if POS is not None else None
 		self["ID"]    = str(ID) if ID is not None else self["CHROM"] + ":" + str(self["POS"])
 		# What about build?
+		if not any([self["ID"], self["CHROM"] and self["POS"]]):
+			sys.exit("LOCUS Error: You must specify at least an ID or a Chromosome Position (Chrom + pos).")
 
 	def __eq__(self, other):
 		"""A match is True if either Chr+Pos and ID matchs. One pair can be missing; either chr+pos or ID, but not both."""
@@ -46,8 +48,54 @@ class Locus(UserDict):
 		except KeyError:
 			raise AttributeError
 
-#	def __setattr__(self, attr, value):
-#		self[attr] = value
+	def __setattr__(self, attr, value):
+		super().__setattr__(attr, value)
+
+
+
+##################################################
+#
+# --%%  RUN: 'SNP' Class Definition  %%--
+
+class SNP(Locus):
+	"""A simple class holding values for one biallelic SNP"""
+	def __init__(self, *args, REF=None, ALT=None, INFO=None, genotype=None, **kwargs):
+		super().__init__(*args, **kwargs)
+		self["REF"]   = str(REF) if REF is not None else None
+		self["ALT"]   = str(ALT) if ALT is not None else None
+		self["INFO"]  = INFO if isinstance(INFO,dict) else dict() # Store INFO/TAG values similar to a VCF file
+		self["genotype"] = genotype
+
+	def __eq__(self, other):
+		same = [super().__eq__(other)]
+		# Write here...
+		# Check rsID == rsid?
+		if isinstance(other, SNP):
+			same.extend([other.REF in [self.REF, self.ALT]] if other.REF is not None else [])
+			same.extend([other.ALT in [self.REF, self.ALT]] if other.ALT is not None else [])
+		# What about build?
+		return all(same)
+
+	def drop_genotype(self):
+		self["genotype"] = None
+		return self
+
+	def genotype(self):
+		out = OrderedDict()
+		for gt in self.get("genotype"):
+			out[gt.subjectid] = GenoType(CHROM=self.CHROM, POS=self.POS, genotype=gt.bases, dosage=gt.dosage)
+		return out
+
+	def getGenoType(self, dosage=None):
+		if dosage is not None:
+			# Should probably do a more intelligent p-calc here...
+			return GenoType(CHROM=self.CHROM, POS=self.POS, genotype = self.REF * abs(self.mladd(dosage) - 2) + self.ALT * self.mladd(dosage))
+		else:
+			sys.exit("SNP Error: You must specify some kind of dosage-like score to convert to genotype.")
+
+	@staticmethod
+	def mladd(dosage):
+		return round(float(dosage))
 
 
 
@@ -58,11 +106,17 @@ class Locus(UserDict):
 # So, here's the justification for the Allele class... we could make ie hashable!!!
 class Allele(Locus):
 	"""An allele is basically a locus with a base assigned. But it can also hold other things, like allelic risk scores"""
-	def __init__(self, *args, allele="", **kwargs):
+	def __init__(self, *args, allele="", p=1, **kwargs):
 		super().__init__(*args, **kwargs)
-		self["ALLELE"] = str(allele)
-		self["ID"] += ":" + self["ALLELE"]
-# We should probably make the above safer... and validate?
+		self["allele"] = str(allele)
+		self["ID"] += ":" + self["allele"]
+		self["p"] = float(p) # The probability that the allele is present. Default: 1
+		if not self["allele"]:
+			raise AttributeError("ALLELE Error: Allele must be a valid string of length > 0. Indel Hint: Custom is to use the base just prior to the deletion ;-).")
+
+	def __contains__(self, other):
+		sys.exit("__contains__ Not Implemented yet ;-)")
+		return False
 
 	def __eq__(self, other):
 		if isinstance(other, Allele):
@@ -74,69 +128,41 @@ class Allele(Locus):
 	def __hash__(self):
 		return hash(self.ID)
 
+	def getAllele(self):
+		return [self]
+
 
 
 ##################################################
 #
 # --%%  RUN: 'GenoType' Class Definition  %%--
 
-class GenoType(Locus):
-	"""Similar to an Allele, but the 'allele' slot is called 'genotype' and it's a list."""
-	def __init__(self, *args, genotype=None, dosage=None, **kwargs):
-		super().__init__(*args, **kwargs)
-		try: iter(genotype)
+class GenoType(Allele):
+	"""Similar to an Allele, but the 'allele' slot is colon-separated, and the new slot 'genotype' is a list."""
+	def __init__(self, *args, allele=None, genotype=None, dosage=None, **kwargs):
+		try: geno = [str(g) for g in genotype]
 		except TypeError:
 			sys.exit("GenoType Error: Provided genotype not iterable.")
 		else:
-			self["GENOTYPE"] = [str(g) for g in genotype]
-			self["ID"] += ":" + "".join(self["GENOTYPE"])
+			super().__init__(*args, allele=":".join(geno), **kwargs)
+			self["genotype"] = geno
+			self["dosage"] = dosage # This may not be the best way; dosages are hard to intrepret here...
 
-#	def __contains__(self, other):
-#		return True
+	def __contains__(self, other):
+		sys.exit("__contains__ Not Implemented yet ;-)")
+		return False
 
 	def __eq__(self, other):
 		if isinstance(other, GenoType):
-			return self.ID == other.ID
-		elif isinstance(other, str):
-			return self.ID == other
+			return all(allele in self.getAllele() for allele in other.getAllele()) and all(allele in other.getAllele() for allele in self.getAllele())
 		return NotImplemented
 
 	def __hash__(self):
-		return hash(self.ID)
+		return super().__hash__()
 
-
-
-##################################################
-#
-# --%%  RUN: 'SNP' Class Definition  %%--
-
-class SNP(Locus):
-	"""A simple class holding values for one biallelic SNP"""
-	def __init__(self, *args, REF=None, ALT=None, info=None, **kwargs):
-		super().__init__(*args, **kwargs)
-		self["REF"]   = str(REF) if REF is not None else None
-		self["ALT"]   = str(ALT) if ALT is not None else None
-		self["INFO"]  = info if isinstance(info,dict) else dict() # Store INFO/TAG values similar to a VCF file
-
-	def __eq__(self, other):
-		same = [super().__eq__(other)]
-		# Write here...
-		# Check rsID == rsid
-		if isinstance(other, SNP):
-			same.extend([other.REF in [self.REF, self.ALT]] if other.REF is not None else [])
-			same.extend([other.ALT in [self.REF, self.ALT]] if other.ALT is not None else [])
-		# What about build?
-		return all(same)
-
-	def genotype(self, dosage=None):
-		if dosage is not None:
-			return GenoType(self.CHROM, self.POS, self.ID, genotype = self.REF * abs(self.mladd(dosage) -2) + self.ALT * self.mladd(dosage))
-		else:
-			sys.exit("SNP Error: You must specify some kind of dosage-like score to convert to genotype.")
-
-	@staticmethod
-	def mladd(dosage):
-		return round(float(dosage))
+	def getAllele(self):
+		# We should probably do a real calc on p here...
+		return [Allele(CHROM=self.CHROM,POS=self.POS,allele=allele,p=1) for allele in self.genotype]
 
 
 
@@ -144,25 +170,41 @@ class SNP(Locus):
 #
 # --%%  Constructor Functions  %%--
 
-def ReadInfo(infofile):
+def ReadGeno(genofobj, info):
+	"""Input: File object to a geno file from SNPextractor.py; Return: A dict (subjectid:genotype_list)"""
+	geno = OrderedDict()
+	for subject in csv.DictReader(genofobj):
+		subjectid = subject.pop("")
+		geno[subjectid] = OrderedDict()
+		for snpid,value in subject.items():
+			dosage = sum([float(x) for x in re.split("[/|]+", value)])
+			geno[subjectid][snpid] = info[snpid].getGenoType(dosage)
+	return geno
+
+def ReadInfo(infofobj):
+	"""Input: File object to an info file from SNPextractor.py"""
 	snps = OrderedDict()
-	with open(infofile) as f:
-		infoiter = csv.DictReader(f)
-		for info in infoiter:
-			snps[info.get("ID")] = SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=info.get("ALT"))
+	infoiter = csv.DictReader(infofobj)
+	for info in infoiter:
+		snps[info.get("ID")] = SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=info.get("ALT"))
 	return snps
 
-def ReadRisk(riskfile):
-	risks = OrderedDict()
-	with open(riskfile) as f:
-		riskiter = csv.DictReader(f)
-		for risk in riskiter:
-			chrom = risk.get("CHROM", risk.get("POSID","").split(":")[0])
-			pos   = risk.get("POS", risk.get("POSID","").split(":")[1])
-			rsid  = risk.get("RSID", risk.get("ID", risk.get("POSID", object())))
-			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
-			risks[rsid] = Allele(CHROM=chrom, POS=pos, ID=rsid, allele=risk.get("ALLELE"), BETA=beta)
-	return risks
+def ReadVCF(vcfiter, drop_genotypes=True):
+	"""Read SNP information from a VCF file using PyVCF. Because this is slow, sample/genotype information is not read by default, but can be enabled"""
+	import vcf
+	snps = OrderedDict()
+	for record in vcfiter:
+		snp = SNP(ID=record.ID, CHROM=record.CHROM, POS=record.POS, REF=record.REF, ALT=record.ALT, INFO=record.INFO, FORMAT=record.FORMAT)
+		if drop_genotypes is False:
+# This should be part of a class method; not freeform like this... set_genotype, add_genotype... or someshit...
+			genotype = namedtuple('genotype', 'subjectid bases dosage phased')
+			snp["genotype"] = []
+			for gt in record.samples:
+				dosage = gt["DS"] if "DS" in gt.data._fields else None
+				bases = re.split("[/|]+", gt.gt_bases)
+				snp["genotype"].append(genotype(subjectid=gt.sample, bases=bases, dosage=dosage, phased=gt.phased))
+		snps[record.ID] = snp
+	return snps
 
 
 
