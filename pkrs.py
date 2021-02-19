@@ -1,4 +1,4 @@
-#!/home/fls530/anaconda3/envs/snakemake/bin/python
+#!/home/fls530/anaconda3/bin/python
 
 """
 Just like the 're' module; you pre-complie a GRS based on a dict of alt alleles and weights
@@ -12,9 +12,10 @@ Just like the 're' module; you pre-complie a GRS based on a dict of alt alleles 
 import collections
 import math
 import pathlib
+import sys
+
 import pkcsv as csv
 import pksnps
-import sys
 
 #################################################
 #
@@ -37,18 +38,16 @@ class RiskScore:
 					self.beta[risk]   = float(risk.get("BETA",0))
 					self.direct[risk] = risk.get("allele",object()) == snp.ALT
 
-# This guy should receive genotypes (Alleles?), or at least be able to...:
 	def calc(self, gtdict):
 		"""This function implements a simple risk score based on a weighted sum.
-		   Subject should be a dict with str(id):float(genotype_score)"""
+		   gtdict:	Subject dict with str(var_id):float(dosage)"""
 		wsum = 0
-		for gtid,gt in gtdict.items():
+		for gt in gtdict.values():
 			if isinstance(gt, pksnps.GenoType):
-				for allele in gt.getAllele():
+				for allele in gt.getAlleles():
 					wsum += self.beta.get(allele, 0) * allele.p
 			else:
-				sys.exit("ERROR: Looks like you called calc on something thats not a GenoType")
-#				wsum += self.beta.get(gtid,0) * abs(float(gt) - (0 if self.direct.get(gtid,True) else 2))
+				sys.exit("ERROR: Looks like you called calc on something that's not a GenoType")
 		return wsum / self.N
 
 	@staticmethod
@@ -66,15 +65,6 @@ class RiskScore:
 				sys.exit("Read Error: Each line of '" + str(riskfobj.name) + "' must contain at least weight value with a recognizable position and allele.\n")
 		return risks
 
-#	def calcFromGeno(self, genofobj):
-#		"""Input: File object to a geno file from SNPextractor.py"""
-#		for subject in csv.DictReader(genofobj):
-#			subjectid = subject.pop("")
-#			geno = OrderedDict()
-#			for snpid,value in subject.items():
-#				dosage = sum([float(x) for x in re.split("[/|]+", value)])
-#				geno[snpid] = GenoType(CHROM=info[snpid].CHROM, POS=info[snpid].POS, genotype=info[snpid].getGenoType(dosage), dosage=dosage)
-#			print(subjectid + "\t" + self.calc(geno))
 
 
 
@@ -86,37 +76,48 @@ class MultiRiskScore(RiskScore):
 	"""Calculate GRS based on MultiLocus Weights."""
 	def __init__(self, snps, risks, multirisks, *args, **kwargs):
 		super().__init__(snps=snps, risks=risks, *args, **kwargs)
-		self.multi = self.ReadMultiRisk(multirisks)
+		self.multi = self.ReadMultiRisk(csv.DictReader(multirisks))
 
-	def calc(self, gtdict, **kwargs):
-		"""INPUT: Gtdict => dict {str(id):GenoType}; RETURN: A risk score (float)"""
+	def calc(self, gtdict, **kwargs): # This guy still works on two levels; isn't nested like ReadMultiRisk now is.
+		"""Calculate the Multilocus part of a GRS.
+		   gtdict => dict {str(id):GenoType}; RETURN: A risk score (float)"""
 		wsum = super().calc(gtdict, **kwargs)
-		for gt1 in self.multi:
-			for gt2 in self.multi[gt1]:
-				if gt1 in gtdict.values() and gt2 in gtdict.values():
-					wsum += self.multi[gt1][gt2] / self.N
+		wsum += self.nested_lookup(self.multi, gtdict.values()) / self.N
 		return wsum
 
 	@staticmethod
-	def ReadMultiRisk(riskfobj):
-		"""We should probably write this with arbitrary nesting... It's not completely finished and is therefore intentionally dirty"""
-		dict_dicts = collections.defaultdict(dict)
-		riskiter = csv.DictReader(riskfobj)
-		for risk in riskiter:
-			beta = float(risk.get("BETA", math.log(float(risk.get("ODDSRATIO")))))
-			gt = []
-			while True:
-				i = len(gt) + 1
-				chrom = risk.get("CHROM_" + str(i), risk.get("POSID_" + str(i),":").split(":")[0])
-				pos   = risk.get("POS_" + str(i), risk.get("POSID_" + str(i),":").split(":")[1])
-				try: gt.append(pksnps.GenoType(CHROM=chrom, POS=int(pos), genotype=risk.get("GENOTYPE_" + str(i), "").split(":")))
-				except AttributeError as ae: 
-					print("\n" + str(ae), file=sys.stderr)
-					sys.exit("Read Error: Each line of '" + str(riskfobj.name) + "' must contain one weight and at least two recognizable positions and alleles.\n")
-				if len(gt) >= 2:
-					break
-			dict_dicts[gt[0]][gt[1]] = beta
-		return dict_dicts
+	def nested_lookup(nested_dict, subject): 
+		if isinstance(nested_dict, dict):
+			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
+				if haplo in subject:
+					return MultiRiskScore.nested_lookup(nested_dict[haplo], [gt for gt in subject if gt != haplo]) # Move down in nested structure. Exclude haplo from subject so it isn't counted again.
+		else:
+			return nested_dict # Which should actually be the weight by now (a float)
+		return 0
+
+
+	@staticmethod
+	def ReadMultiRisk(risk_iter):
+		"""INPUT: A file object to read from; RETURN: An arbitrarily nested dict with the required genotypes/haplotypes as keys and the weights as the bottommost values.
+		   We should probably write this with arbitrary nesting... It's not completely finished and is therefore intentionally dirty"""
+		def nested_read(risk, nested_dict=dict(), i=1):
+			chrom = risk.get("CHROM_" + str(i), risk.get("POSID_" + str(i),":").split(":")[0])
+			pos   = risk.get("POS_" + str(i), risk.get("POSID_" + str(i),":").split(":")[1])
+			myid  = risk.get("ID_" + str(i))
+			try:
+				gtype = pksnps.GenoType(ID=myid, CHROM=chrom, POS=pos, genotype=risk.get("GENOTYPE_" + str(i), "").split(":"))
+			except (AssertionError, AttributeError) as ae:
+				beta = float(risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1)))))
+				assert beta and isinstance(nested_dict, dict), "Each line of multilocus weights file must contain one weight and at least one recognizable allele or genotype."
+				return beta
+			nested_dict[gtype] = nested_read(risk, nested_dict.get(gtype, dict()), i+1)
+			return nested_dict
+
+		nested_dict = dict()
+		for risk in risk_iter:
+			if risk.get("GENOTYPE_1"):
+				nested_dict = nested_read(risk, nested_dict)
+		return nested_dict
 
 
 
@@ -144,13 +145,51 @@ class sharp2019(MultiRiskScore):
 		self.N = 1
 
 	def calc(self, gtdict, **kwargs):
-#	sharp is in three parts (int / no-int) + others
-		wsum = super().calc(gtdict, **kwargs)
-		return wsum + self.calc_sharp(gtdict)
+		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair."""
+		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, gtdict, **kwargs)
+		wsum += sum(self.nested_lookup(self.multi, gtdict.values())[:2]) / self.N
+		return wsum
 
-	def calc_sharp(self, gtdict):
-		"""For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair. This last part mustm be done here."""
-		wsum = 0
-		return wsum / self.N
+	@staticmethod
+	def nested_lookup(nested_dict, subject):
+		if wsum := super(sharp2019,sharp2019).nested_lookup(nested_dict, subject):
+			return [wsum]
+		wsum = []
+		import itertools
+		subject_alleles = list(itertools.chain(*[gt.getAlleles(True) for gt in subject]))
+		if isinstance(nested_dict, dict):
+			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
+				if haplo in subject_alleles:
+					wsum.extend(sharp2019.nested_lookup(nested_dict[haplo], subject)) # Move down in nested structure.
+		else:
+			return [nested_dict] # Which should actually be the weight by now (a float)
+		return wsum
+
+	@staticmethod
+	def ReadMultiRisk(risk_iter):
+		"""Returns: A nested dict with Genotypes and Alleles as keys and the matching weights as leaf values.
+		risk_iter => An iterable containing tab-separated data on genotypes/alleles and their risk weights."""
+		import itertools
+		(risk_iter1, risk_iter2) = itertools.tee(risk_iter,2)
+		nested_dict = super(sharp2019, sharp2019).ReadMultiRisk(risk_iter1)
+
+		def nested_read(risk, nested_dict=dict(), i=1):
+			chrom = risk.get("CHROM_" + str(i), risk.get("POSID_" + str(i),":").split(":")[0])
+			pos   = risk.get("POS_" + str(i), risk.get("POSID_" + str(i),":").split(":")[1])
+			myid  = risk.get("ID_" + str(i))
+			try:
+				gtype = pksnps.Allele(ID=myid, CHROM=chrom, POS=pos, allele=risk.get("ALLELE_" + str(i), ""))
+			except (AssertionError, AttributeError) as ae:
+				beta = float(risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1)))))
+				assert beta and isinstance(nested_dict, dict), "Each line of multilocus weights file must contain one weight and at least one recognizable allele or genotype."
+				return beta
+			nested_dict[gtype] = nested_read(risk, nested_dict.get(gtype, dict()), i+1)
+			return nested_dict
+
+		for risk in risk_iter2:
+			if risk.get("ALLELE_1"):
+				nested_dict = nested_read(risk, nested_dict)
+		return nested_dict
+
 
 
