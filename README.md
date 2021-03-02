@@ -1,3 +1,9 @@
 # Risk_Score
 
-Basic Script for Calculating (Genetic) Risk Scores from Datavectors
+Calculate the Genetic Risk Score (GRS) for a list of subjects based on predefined risk weights.
+
+Reads a (vcf) file with population/sample genotype information and outputs a genetic risk score based on predefined weights. Several different algorithms are available including a generic aggregate score and several specific, published algorithms.
+
+Predefined weights are included based on the previously published algorithms, but the user can override these if desired.
+
+

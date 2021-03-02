@@ -20,8 +20,8 @@ import pkcsv as csv
 
 class Locus(UserDict):
 	"""A base class to hold one genomic position"""
-	def __init__(self, CHROM=None, POS=None, ID=None, *args, **kwargs):
-		super().__init__(*args, **kwargs)
+	def __init__(self, CHROM=None, POS=None, ID=None, data=None, *args, **kwargs):
+		super().__init__(data, *args, **kwargs)
 		if not any([CHROM, POS, ID is None]):
 			if re.search("^[0-9xXyYmM]+:[0-9]+", ID):
 				(CHROM,POS,*_) = ID.split(":")
@@ -110,7 +110,7 @@ class SNP(Locus):
 class Allele(Locus):
 	"""An allele is basically a locus with a base assigned. But it can also hold other things, like allelic risk scores"""
 	def __init__(self, *args, allele="", p=1, **kwargs):
-		super().__init__(*args, dict={'allele':str(allele)}, **kwargs)
+		super().__init__(*args, data={'allele':str(allele)}, **kwargs)
 		self["p"] = float(p) # The probability that the allele is present. Default: 1
 		if self["CHROM"] and self['POS']: # Because posid is required if a position is given. Otherwise we are not hashable.
 			self["ID"] = self.posid()

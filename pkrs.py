@@ -10,12 +10,18 @@ Just like the 're' module; you pre-complie a GRS based on a dict of alt alleles 
 """
 
 import collections
+import logging
 import math
 import pathlib
 import sys
 
 import pkcsv as csv
 import pksnps
+
+assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
+logger = logging.getLogger(__name__)
+
+
 
 #################################################
 #
@@ -51,18 +57,19 @@ class RiskScore:
 		return wsum / self.N
 
 	@staticmethod
-	def ReadRisk(riskfobj):
-		"""Input: A file_obj (Or similar iterator); Return: List of Alleles"""
+	def ReadRisk(riskiter):
+		"""Input: An iterator); Return: List of Alleles"""
 		risks = []
-		riskiter = csv.DictReader(riskfobj)
+		logger.debug(f"ReadRisk: {type(riskiter)}")
 		for risk in riskiter:
+			logger.debug(f"ReadRisk: {risk}")
 			chrom = risk.get("CHROM", risk.get("POSID",":").split(":")[0])
 			pos   = risk.get("POS", risk.get("POSID",":").split(":")[1])
 			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
 			try: risks.append(pksnps.Allele(CHROM=str(chrom), POS=int(pos), allele=str(risk.get("ALLELE")), BETA=float(beta)))
 			except AttributeError as ae: 
 				print("\n" + str(ae), file=sys.stderr)
-				sys.exit("Read Error: Each line of '" + str(riskfobj.name) + "' must contain at least weight value with a recognizable position and allele.\n")
+				sys.exit("Read Error: Each line of '" + str(riskiter.get("name","weights file")) + "' must contain at least weight value with a recognizable position and allele.\n")
 		return risks
 
 
