@@ -14,6 +14,28 @@ import pkcsv as csv
 
 
 
+
+
+
+# There is no proper support for dosage scores in the script yet, but we could add it. Will likely need a dosage class:
+# Will probably want to extend float on this one. Look here for some inspiration:
+# https://stackoverflow.com/questions/25022079/extend-python-build-in-class-float
+
+class Dosage(object):
+	def __init__(self, ref, alt, dosage):
+		self.alt = str(alt) # This is the counted base
+		self.ref = str(ref) # This is the Zero base
+		self._dosage = float()
+
+	@property
+	def dosage():
+		return self._dosage
+
+
+
+
+
+
 ##################################################
 #
 # --%%  : 'Locus' Class Definition  %%--
@@ -109,9 +131,9 @@ class SNP(Locus):
 # So, here's the justification for the Allele class... we could make ie hashable!!!
 class Allele(Locus):
 	"""An allele is basically a locus with a base assigned. But it can also hold other things, like allelic risk scores"""
-	def __init__(self, *args, allele="", p=1, **kwargs):
+	def __init__(self, *args, allele="", dosage=1, **kwargs):
 		super().__init__(*args, data={'allele':str(allele)}, **kwargs)
-		self["p"] = float(p) # The probability that the allele is present. Default: 1
+		self["dosage"] = float(dosage) # The allelic dosage; ie probability that the allele is present. Default: 1
 		if self["CHROM"] and self['POS']: # Because posid is required if a position is given. Otherwise we are not hashable.
 			self["ID"] = self.posid()
 		assert self["allele"], "Allele must be a valid string of length > 0. For Deletions: Custom is to use the base just prior to the deletion."
@@ -173,12 +195,20 @@ class GenoType(Locus):
 		else:
 			return hash((self.ID, tuple(sorted(self.genotype))))
 
-	def getAlleles(self, useID=False):
-		# We should probably do a real calc on p here...
-		if useID or None in (self.CHROM, self.POS):
-			return [Allele(ID=self.ID, allele=allele, p=1) for allele in self.genotype]
-		return [Allele(CHROM=self.CHROM, POS=self.POS, allele=allele, p=1) for allele in self.genotype]
+	def dosage(self):
+		"""Return the dosage score. We must assume that it is relative to """
+		pass
 
+	def getAlleles(self, useID=False):
+		# We should probably do a real calc on dosage here...
+		dosage = 2 if self.homozygous else 1
+		if useID or None in (self.CHROM, self.POS):
+			return [Allele(ID=self.ID, allele=allele, dosage=dosage) for allele in self.genotype]
+		return [Allele(CHROM=self.CHROM, POS=self.POS, allele=allele, dosage=dosage) for allele in self.genotype]
+
+	@property
+	def homozygous(self):
+		return all([gt == self.genotype[0] for gt in self.genotype])
 
 
 

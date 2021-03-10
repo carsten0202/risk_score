@@ -20,7 +20,7 @@ import pkclick
 import pksnps as snps
 import pkrs as riskscore
 
-Version = "1.0.1"
+Version = "1.0.2"
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
@@ -171,6 +171,8 @@ https://doi.org/10.2337/dc18-1785
 	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights, multilocus)
 	grs = riskscore.sharp2019(snpinfo, risks=weights, multirisks=multilocus)
 	for sbjid,gt in sbjgeno.items():
+		logging.info(f"Processing Subject: {sbjid}")
+		logging.debug(f"Subject alleles: {gt}")
 		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
 
 @main.command(no_args_is_help=True, hidden=True)
