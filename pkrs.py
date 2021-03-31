@@ -15,7 +15,7 @@ import math
 import pathlib
 import sys
 
-import pkcsv as csv
+import pklib.pkcsv as csv
 import pksnps
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
@@ -30,13 +30,15 @@ logger = logging.getLogger(__name__)
 class RiskScore:
 	"""An algorithm template object for holding the definition of a weight-based risk score.
 	   Input should be an iterable of SNPs and an iterable of Alleles (with BETA defined)"""
-	def __init__(self, snps, risks):
+	def __init__(self, snps, risks, N=None):
 		self.beta   = dict()
 		if isinstance(snps, dict):
 			snps = snps.values()
 		self.snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
 		risks = self.ReadRisk(risks)
-		self.N = len(risks)
+		self.N = len(risks) if N is None else float(N)
+		assert self.N > 0, f"The denominator given with '-n' ('{self.N}') for the arithmetric mean must be >0."
+		logger.debug(f"RiskScore: Setting N={self.N}")
 		for risk in risks:
 			if risk not in snps:
 				logger.warning(f"RiskScore: Weighted allele '{risk}' not found in subject data. Did you provide the correct subject variants?")

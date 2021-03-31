@@ -1,0 +1,3 @@
+[submodule "src/pklib"]
+	path = src/pklib
+	url = git@github.com:carsten0202/pkmodules

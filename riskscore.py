@@ -14,13 +14,16 @@ import re
 import sys
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
+
+ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute())
+sys.path = [ScriptPath + '/src'] + sys.path
  
-import pkcsv as csv
-import pkclick
+import pklib.pkcsv as csv
+import pklib.pkclick as pkclick
 import pksnps as snps
 import pkrs as riskscore
 
-Version = "1.0.2"
+Version = "1.1.4"
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
@@ -69,10 +72,11 @@ Replace '#' with a number of 1 or higher to indicate each locus group in a multi
 """,
 )
 
-OPTION = namedtuple('Options', ['geno','info','log','vcf','weights','multiweights'])(
+OPTION = namedtuple('Options', ['geno','info','log','n','vcf','weights','multiweights'])(
 	geno = """Geno file of the type created by SNPextractor.""",
 	info = """Info file of the type created by SNPextractor.""",
 	log  = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
+	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation. Default: Number of lines in weights file minus header.""",
 	vcf  = """
 Load VCF File using PyVCF VCFv4.0 and 4.1 parser for Python. Note that this option requires reading the entire VCF into
 memory, which is not recommended for large VCF files. Use 'bcftools view --regions' or similar, to first reduce large
@@ -81,8 +85,6 @@ files in size.
 	weights = """Single locus risk weights file. See format description below on 'Column-Based Datafiles'.\n""",
 	multiweights = """Multi-locus risk weights file. See format description below on 'Column-Based Datafiles'.\n"""
 )
-
-ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute())
 
 # Notes and TODOs:
 
@@ -102,16 +104,16 @@ ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute())
 class StdCommand(click.Command):
 	def __init__(self, *args, epilog=None, **kwargs):
 		super().__init__(*args, **kwargs)
+		self.params.insert(0, click.Option(('--vcf',), type=pkclick.gzFile(mode='rb'), help=OPTION.vcf))
 		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help=OPTION.info))
 		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help=OPTION.geno))
-		self.params.insert(0, click.Option(('--vcf',), type=pkclick.gzFile(mode='rb'), help=OPTION.vcf))
 		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
 
 @click.group()
 @click.version_option(version=Version)
 @click.option('--log', default="warning", help=OPTION.log, show_default=True)
 def main(log):
-	"""Calculate the Genetic Risk Score (GRS) for a list of subjects based on predefined risk weights."""
+	"""Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined risk weights."""
 	try:
 		log_num = getattr(logging, log.upper())
 	except AttributeError:
@@ -123,12 +125,15 @@ def main(log):
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
+@click.option('-n','--denominator', type=click.FLOAT, help=OPTION.n)
 @click.option('-w','--weights', type=click.File(), default=None, help=OPTION.weights)
-def aggregate(geno, info, vcf, weights):
+def aggregate(geno, info, denominator, vcf, weights):
 	"""Calculate Aggregated Risk Score from user-provided weights."""
 	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights)
-	grs = riskscore.RiskScore(snpinfo, risks=weights)
+	grs = riskscore.RiskScore(snpinfo, risks=weights, N=denominator)
 	for sbjid,gt in sbjgeno.items():
+		logging.info(f"Processing Subject: {sbjid}")
+		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print(sbjid + "\t" + str(grs.calc(gt)))
 
 @main.command(cls=StdCommand, no_args_is_help=True)
@@ -150,6 +155,8 @@ https://doi.org/10.2337/dc15-1111
 	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights, multilocus)
 	grs = riskscore.oram2016(snpinfo, risks=weights, multirisks=multilocus)
 	for sbjid,gt in sbjgeno.items():
+		logging.info(f"Processing Subject: {sbjid}")
+		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
 
 @main.command(cls=StdCommand, no_args_is_help=True)
@@ -172,7 +179,7 @@ https://doi.org/10.2337/dc18-1785
 	grs = riskscore.sharp2019(snpinfo, risks=weights, multirisks=multilocus)
 	for sbjid,gt in sbjgeno.items():
 		logging.info(f"Processing Subject: {sbjid}")
-		logging.debug(f"Subject alleles: {gt}")
+		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
 
 @main.command(no_args_is_help=True, hidden=True)
@@ -200,6 +207,7 @@ def test(vcf, weights, multilocus):
 # --%%  RUN: Subroutines  %%--
 
 def process_args(geno=None, info=None, vcf=None, weights=None, *args):
+	"""Prep and prepare. Provide the link between the input parameters and the RiskScore classes."""
 	if vcf:
 		import vcf as vcf_
 		vcfdata = snps.ReadVCF(vcf_.Reader(vcf, compressed=False), drop_genotypes=False)
@@ -216,6 +224,7 @@ def process_args(geno=None, info=None, vcf=None, weights=None, *args):
 	return (sbjgeno, snpinfo, weights)
 
 # Another quick'n'dirty function which should probably be done cleaner
+#	TODO: Should probably cll getGenoType iterably over the snp objects
 def transpose_geno(genoiter):
 	import collections
 	dict_dicts = collections.defaultdict(dict)
