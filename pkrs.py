@@ -13,9 +13,10 @@ import collections
 import logging
 import math
 import pathlib
+import re
 import sys
 
-import pkcsv as csv
+import pklib.pkcsv as csv
 import pksnps
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
@@ -30,30 +31,32 @@ logger = logging.getLogger(__name__)
 class RiskScore:
 	"""An algorithm template object for holding the definition of a weight-based risk score.
 	   Input should be an iterable of SNPs and an iterable of Alleles (with BETA defined)"""
-	def __init__(self, snps, risks):
+	def __init__(self, snps, risks, N=None):
 		self.beta   = dict()
-		self.direct = dict()
 		if isinstance(snps, dict):
 			snps = snps.values()
 		self.snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
 		risks = self.ReadRisk(risks)
-		self.N = len(risks)
-		for snp in snps:
-			for risk in risks:
+		self.N = len(risks) if N is None else float(N)
+		assert self.N > 0, f"The denominator given with '-n' ('{self.N}') for the arithmetric mean must be >0."
+		logger.debug(f"RiskScore: Setting N={self.N}")
+		for risk in risks:
+			if risk not in snps:
+				logger.warning(f"RiskScore: Weighted allele '{risk}' not found in subject data. Did you provide the correct subject variants?")
+			for snp in snps:
 				if snp == risk:
 					self.beta[risk]   = float(risk.get("BETA",0))
-					self.direct[risk] = risk.get("allele",object()) == snp.ALT
 
 	def calc(self, gtdict):
 		"""This function implements a simple risk score based on a weighted sum.
 		   gtdict:	Subject dict with str(var_id):float(dosage)"""
 		wsum = 0
-		for gt in gtdict.values():
-			if isinstance(gt, pksnps.GenoType):
-				for allele in gt.getAlleles():
-					wsum += self.beta.get(allele, 0) * allele.p
-			else:
-				sys.exit("ERROR: Looks like you called calc on something that's not a GenoType")
+		gtlist = list(gtdict.values())
+		alleles = {allele:allele.dosage for gt in gtlist for allele in gt.getAlleles()}
+		for allele,wgt in self.beta.items():
+			wsum += wgt * alleles.get(allele, 0)
+			if alleles.get(allele):
+				logger.debug(f"Calc Aggregate: '{allele}' found; weight = {wgt}, dosage = {alleles.get(allele,0)}; wsum = {wsum}")
 		return wsum / self.N
 
 	@staticmethod
@@ -63,15 +66,17 @@ class RiskScore:
 		logger.debug(f"ReadRisk: {type(riskiter)}")
 		for risk in riskiter:
 			logger.debug(f"ReadRisk: {risk}")
-			chrom = risk.get("CHROM", risk.get("POSID",":").split(":")[0])
-			pos   = risk.get("POS", risk.get("POSID",":").split(":")[1])
+			chrom = risk.get("CHROM", re.split(":", risk.get("POSID",":"))[0])
+			pos   = risk.get("POS", re.split(":|_", risk.get("POSID",":"))[1])
 			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
 			try: risks.append(pksnps.Allele(CHROM=str(chrom), POS=int(pos), allele=str(risk.get("ALLELE")), BETA=float(beta)))
 			except AttributeError as ae: 
 				print("\n" + str(ae), file=sys.stderr)
 				sys.exit("Read Error: Each line of '" + str(riskiter.get("name","weights file")) + "' must contain at least weight value with a recognizable position and allele.\n")
+			except ValueError as ve:
+				print("\n" + str(ve), file=sys.stderr)
+				sys.exit("Read Error: Looks like some weights data are not following the expected format.")
 		return risks
-
 
 
 
@@ -89,7 +94,10 @@ class MultiRiskScore(RiskScore):
 		"""Calculate the Multilocus part of a GRS.
 		   gtdict => dict {str(id):GenoType}; RETURN: A risk score (float)"""
 		wsum = super().calc(gtdict, **kwargs)
-		wsum += self.nested_lookup(self.multi, gtdict.values()) / self.N
+		if mrs := self.nested_lookup(self.multi, gtdict.values()):
+			logger.debug(f"Calc MultiRiskScore: found weight = {mrs}")
+			wsum += mrs / self.N
+		logger.debug(f"MultiRiskScore: Total score = {wsum}")
 		return wsum
 
 	@staticmethod
@@ -97,6 +105,7 @@ class MultiRiskScore(RiskScore):
 		if isinstance(nested_dict, dict):
 			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
 				if haplo in subject:
+					logger.debug(f"MultiRiskScore: Found allele '{haplo}' pointing to '{nested_dict[haplo]}'.")
 					return MultiRiskScore.nested_lookup(nested_dict[haplo], [gt for gt in subject if gt != haplo]) # Move down in nested structure. Exclude haplo from subject so it isn't counted again.
 		else:
 			return nested_dict # Which should actually be the weight by now (a float)
@@ -154,7 +163,10 @@ class sharp2019(MultiRiskScore):
 	def calc(self, gtdict, **kwargs):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair."""
 		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, gtdict, **kwargs)
-		wsum += sum(self.nested_lookup(self.multi, gtdict.values())[:2]) / self.N
+		if mrs := sum(self.nested_lookup(self.multi, gtdict.values())[:2]):
+			logger.debug(f"Sharp2019: Found multirisk weights = {mrs}")
+			wsum += mrs / self.N
+		logger.debug(f"Sharp2019: Total score = {wsum}")
 		return wsum
 
 	@staticmethod
@@ -167,6 +179,7 @@ class sharp2019(MultiRiskScore):
 		if isinstance(nested_dict, dict):
 			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
 				if haplo in subject_alleles:
+					logger.debug(f"Sharp2019: Found allele '{haplo}' pointing to '{nested_dict[haplo]}'.")
 					wsum.extend(sharp2019.nested_lookup(nested_dict[haplo], subject)) # Move down in nested structure.
 		else:
 			return [nested_dict] # Which should actually be the weight by now (a float)

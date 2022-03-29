@@ -10,7 +10,40 @@ import re
 import sys
 from collections import OrderedDict, namedtuple, UserDict
 
-import pkcsv as csv
+import pklib.pkcsv as csv
+
+
+
+
+
+
+# There is no proper support for dosage scores in the script yet, but we could add it. Will likely need a dosage class:
+# Will probably want to extend float on this one. Look here for some inspiration:
+# https://stackoverflow.com/questions/25022079/extend-python-build-in-class-float
+
+class Dosage(object):
+	"""Class for holding dosage scores."""
+	def __init__(self, ref, alt, dosage):
+		self.alt = str(alt) # This is the counted base
+		self.ref = str(ref) # This is the Zero base
+		self._dosage = float(dosage) if dosage is not None else None
+
+	@property
+	def dosage(self):
+		"""Get the dosage."""
+		return self._dosage
+
+	def p(self, bases=None):
+		"""I need to be able to convert a dosage score to an array of p-values. But that's not trivial..."""
+		bases = bases if bases is not None else [self.ref, self.alt]
+		decimals = self.dosage % 1 if self.dosage is not None else 0 # decimals=0 gives p=[1,1] signifying a fixed genotype
+		if decimals > 0.5: # Here, decimals must be given to an ALT base
+			p = [1.0, decimals] if bases[0] == self.ref else [decimals, 1.0]
+		else: # Here, 1 - decimals must be given to a REF base
+			p = [1.0, 1.0 - decimals] if bases[0] == self.alt else [1.0 - decimals, 1.0]
+		return p
+
+
 
 
 
@@ -67,7 +100,7 @@ class SNP(Locus):
 		self["REF"]   = str(REF) if REF is not None else None
 		self["ALT"]   = str(ALT) if ALT is not None else None
 		self["INFO"]  = INFO if isinstance(INFO,dict) else dict() # Store INFO/TAG values similar to a VCF file
-		self["genotype"] = genotype
+		self["genotype"] = genotype # This guy should be a list of namedtuple('genotype', 'subjectid bases dosage phased')
 
 	def __eq__(self, other):
 		# Check rsID == rsid?
@@ -83,15 +116,18 @@ class SNP(Locus):
 		return self
 
 	def genotype(self):
-		out = OrderedDict()
+		"""Returns a dict of SubjectID:GenoType based on dosages from the self.genotype slot."""
+		out = dict()
 		for gt in self.get("genotype"):
-			out[gt.subjectid] = GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype=gt.bases, dosage=gt.dosage)
+			p=Dosage(ref=self.REF, alt=self.ALT, dosage=gt.dosage).p(gt.bases)
+			out[gt.subjectid] = GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype=gt.bases, phased=gt.phased, p=p)
 		return out
 
 	def getGenoType(self, dosage=None):
+		"""Calculate one GenoType based on provided dosage."""
 		if dosage is not None:
-			# Should probably do a more intelligent p-calc here...
-			return GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype = self.REF * abs(self.mladd(dosage) - 2) + self.ALT * self.mladd(dosage))
+			p = Dosage(ref=self.REF, alt=self.ALT, dosage=dosage).p()
+			return GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype = self.REF * abs(self.mladd(dosage) - 2) + self.ALT * self.mladd(dosage), p=p)
 		else:
 			sys.exit("SNP Error: You must specify some kind of dosage-like score to convert to genotype.")
 
@@ -109,9 +145,9 @@ class SNP(Locus):
 # So, here's the justification for the Allele class... we could make ie hashable!!!
 class Allele(Locus):
 	"""An allele is basically a locus with a base assigned. But it can also hold other things, like allelic risk scores"""
-	def __init__(self, *args, allele="", p=1, **kwargs):
+	def __init__(self, *args, allele="", dosage=1, **kwargs):
 		super().__init__(*args, data={'allele':str(allele)}, **kwargs)
-		self["p"] = float(p) # The probability that the allele is present. Default: 1
+		self["dosage"] = float(dosage) # The allelic dosage; ie probability that the allele is present. Default: 1
 		if self["CHROM"] and self['POS']: # Because posid is required if a position is given. Otherwise we are not hashable.
 			self["ID"] = self.posid()
 		assert self["allele"], "Allele must be a valid string of length > 0. For Deletions: Custom is to use the base just prior to the deletion."
@@ -146,15 +182,15 @@ class Allele(Locus):
 # --%%  RUN: 'GenoType' Class Definition  %%--
 
 class GenoType(Locus):
-	"""Similar to an Allele, but the 'allele' slot is colon-separated, and the new slot 'genotype' is a list."""
-	def __init__(self, *args, genotype=None, dosage=None, phased=False,**kwargs):
+	"""Similar to an Allele, but no allele slot and the new slot 'genotype' is a tuple."""
+	def __init__(self, *args, genotype=None, phased=False, p=None, **kwargs):
 		try: geno = tuple(str(g) for g in genotype if str(g) not in [':','/','|','_'])
 		except TypeError:
 			sys.exit("GenoType Error: Provided genotype not iterable.")
 		super().__init__(*args, **kwargs)
 		self["genotype"] = geno
 		self["phased"] = phased
-		self["dosage"] = dosage # This may not be the best way; Only makes sense in genotype[0]=REF; genotype[1]=VAR setups...
+		self["p"] = p if p is not None else [1] * len(self["genotype"])
 
 	def __contains__(self, other):
 		sys.exit("__contains__ Not Implemented yet ;-)")
@@ -173,12 +209,20 @@ class GenoType(Locus):
 		else:
 			return hash((self.ID, tuple(sorted(self.genotype))))
 
-	def getAlleles(self, useID=False):
-		# We should probably do a real calc on p here...
-		if useID or None in (self.CHROM, self.POS):
-			return [Allele(ID=self.ID, allele=allele, p=1) for allele in self.genotype]
-		return [Allele(CHROM=self.CHROM, POS=self.POS, allele=allele, p=1) for allele in self.genotype]
+	def __repr__(self):
+		phased = "|" if self.phased else "/"
+		return f"Genotype({self.ID}:{phased.join(self.genotype)},p={self.p})"
 
+	def getAlleles(self, useID=False):
+		# We should probably do a real calc on dosage here...
+		dosage = 2 if self.homozygous else 1
+		if useID or None in (self.CHROM, self.POS):
+			return [Allele(ID=self.ID, allele=allele, dosage=dosage) for allele in self.genotype]
+		return [Allele(CHROM=self.CHROM, POS=self.POS, allele=allele, dosage=dosage) for allele in self.genotype]
+
+	@property
+	def homozygous(self):
+		return all([gt == self.genotype[0] for gt in self.genotype])
 
 
 
@@ -197,14 +241,17 @@ def ReadGeno(genofobj, info):
 			geno[subjectid][snpid] = info[snpid].getGenoType(dosage)
 	return geno
 
+# Should add this guy to SNP class since it returns a SNP object
 def ReadInfo(infofobj):
 	"""Input: File object to an info file from SNPextractor.py"""
 	snps = OrderedDict()
 	infoiter = csv.DictReader(infofobj)
 	for info in infoiter:
-		snps[info.get("ID")] = SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=info.get("ALT"))
+		alt = re.sub("[\[\]]+","",info.get("ALT", ""))
+		snps[info.get("ID")] = SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=alt)
 	return snps
 
+# Should add this guy to SNP class since it returns a SNP object
 def ReadVCF(vcfiter, drop_genotypes=True):
 	"""Read SNP information from a VCF file using PyVCF. Because this is slow, sample/genotype information is not read by default, but can be enabled"""
 	import vcf
