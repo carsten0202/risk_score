@@ -13,6 +13,7 @@ import collections
 import logging
 import math
 import pathlib
+import re
 import sys
 
 import pklib.pkcsv as csv
@@ -65,13 +66,16 @@ class RiskScore:
 		logger.debug(f"ReadRisk: {type(riskiter)}")
 		for risk in riskiter:
 			logger.debug(f"ReadRisk: {risk}")
-			chrom = risk.get("CHROM", risk.get("POSID",":").split(":")[0])
-			pos   = risk.get("POS", risk.get("POSID",":").split(":")[1])
+			chrom = risk.get("CHROM", re.split(":", risk.get("POSID",":"))[0])
+			pos   = risk.get("POS", re.split(":|_", risk.get("POSID",":"))[1])
 			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
 			try: risks.append(pksnps.Allele(CHROM=str(chrom), POS=int(pos), allele=str(risk.get("ALLELE")), BETA=float(beta)))
 			except AttributeError as ae: 
 				print("\n" + str(ae), file=sys.stderr)
 				sys.exit("Read Error: Each line of '" + str(riskiter.get("name","weights file")) + "' must contain at least weight value with a recognizable position and allele.\n")
+			except ValueError as ve:
+				print("\n" + str(ve), file=sys.stderr)
+				sys.exit("Read Error: Looks like some weights data are not following the expected format.")
 		return risks
 
 
