@@ -6,7 +6,7 @@
 #
 # --%%  RUN: Perform Basic Setup  %%--
 
-import click
+# import click
 from collections import namedtuple
 import logging
 import pathlib
@@ -19,11 +19,11 @@ ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute())
 sys.path = [ScriptPath + '/src'] + sys.path
  
 import pklib.pkcsv as csv
-import pklib.pkclick as pkclick
+import pklib.pkclick as click
 import pksnps as snps
 import pkrs as riskscore
 
-Version = "1.1.4"
+Version = "1.2"
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
@@ -104,7 +104,7 @@ files in size.
 class StdCommand(click.Command):
 	def __init__(self, *args, epilog=None, **kwargs):
 		super().__init__(*args, **kwargs)
-		self.params.insert(0, click.Option(('--vcf',), type=pkclick.gzFile(mode='rb'), help=OPTION.vcf))
+		self.params.insert(0, click.Option(('--vcf',), type=click.VCFFile(), help=OPTION.vcf))
 		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help=OPTION.info))
 		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help=OPTION.geno))
 		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
@@ -123,22 +123,22 @@ def main(log):
 
 
 
-
 @main.command(cls=StdCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, help=OPTION.n)
-@click.option('-w','--weights', type=click.File(), default=None, help=OPTION.weights)
+@click.option('-w','--weights', type=click.CSVFile(), default=None, help=OPTION.weights)
 def aggregate(geno, info, denominator, vcf, weights):
 	"""Calculate Aggregated Risk Score from user-provided weights."""
-	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights)
+	(sbjgeno, snpinfo) = process_args(geno, info, vcf)
 	grs = riskscore.RiskScore(snpinfo, risks=weights, N=denominator)
 	for sbjid,gt in sbjgeno.items():
 		logging.info(f"Processing Subject: {sbjid}")
 		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print(sbjid + "\t" + str(grs.calc(gt)))
 
+
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m','--multilocus', type=click.File(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
-@click.option('-w','--weights', type=click.File(), default=f"{ScriptPath}/oram2016.weights.txt", show_default=True, help=OPTION.weights)
+@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
+@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.txt", show_default=True, help=OPTION.weights)
 def oram2016(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Oram et al 2016.
 
@@ -152,16 +152,17 @@ MN Weedon.
 Diabetes care 39 (3), 337-344.
 https://doi.org/10.2337/dc15-1111
 """
-	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights, multilocus)
+	(sbjgeno, snpinfo) = process_args(geno, info, vcf)
 	grs = riskscore.oram2016(snpinfo, risks=weights, multirisks=multilocus)
 	for sbjid,gt in sbjgeno.items():
 		logging.info(f"Processing Subject: {sbjid}")
 		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
 
+
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m', '--multilocus', type=click.File(), default=f"{ScriptPath}/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('-w', "--weights", type=click.File(), default=f"{ScriptPath}/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
+@click.option('-w', "--weights", type=click.CSVFile(), default=f"{ScriptPath}/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
 def sharp2019(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Sharp et al 2019.
 
@@ -175,20 +176,21 @@ JM Locke, JT, MN Weedon, WA Hagopian, RA Oram.
 Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
-	(sbjgeno, snpinfo, weights) = process_args(geno, info, vcf, weights, multilocus)
+	(sbjgeno, snpinfo) = process_args(geno, info, vcf)
 	grs = riskscore.sharp2019(snpinfo, risks=weights, multirisks=multilocus)
 	for sbjid,gt in sbjgeno.items():
 		logging.info(f"Processing Subject: {sbjid}")
 		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
 		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
 
+
 @main.command(no_args_is_help=True, hidden=True)
-@click.option('-m','--multilocus',  type=click.File(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('-w','--weights', type=click.File(), default=f"{ScriptPath}/oram2016.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
+@click.option('--vcf', type=click.VCFFile(), default="/emc/cbmr/users/fls530/grs_t1d_translate/test.vcf.gz", help=OPTION.vcf)
+@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.txt", help=OPTION.weights, show_default=True)
 def test(vcf, weights, multilocus):
 	"""FOR TESTING PURPOSES ONLY; DO NOT USE!"""
-	import vcf as vcf_
-	vcfdata = snps.ReadVCF(vcf_.Reader(vcf, compressed=False), drop_genotypes=False)
+	vcfdata = snps.ReadVCF(vcf, drop_genotypes=False)
 	sbjgeno = transpose_geno([snp.genotype() for snp in vcfdata.values()])
 	snpinfo = [snp.drop_genotype() for snp in vcfdata.values()]
 	grs = riskscore.oram2016(snpinfo, risks=weights, multirisks=multilocus)
@@ -206,11 +208,10 @@ def test(vcf, weights, multilocus):
 #
 # --%%  RUN: Subroutines  %%--
 
-def process_args(geno=None, info=None, vcf=None, weights=None, *args):
+def process_args(geno=None, info=None, vcf=None, *args):
 	"""Prep and prepare. Provide the link between the input parameters and the RiskScore classes."""
 	if vcf:
-		import vcf as vcf_
-		vcfdata = snps.ReadVCF(vcf_.Reader(vcf, compressed=False), drop_genotypes=False)
+		vcfdata = snps.ReadVCF(vcf, drop_genotypes=False)
 		sbjgeno = transpose_geno([snp.genotype() for snp in vcfdata.values()])
 		snpinfo = [snp.drop_genotype() for snp in vcfdata.values()]
 	elif (geno and info):
@@ -218,10 +219,7 @@ def process_args(geno=None, info=None, vcf=None, weights=None, *args):
 		sbjgeno = snps.ReadGeno(geno, snpinfo)
 	else:
 		sys.exit("ERROR: No input files specified, add either '--vcf' or both '--geno' and '--info' options. Use '--help' for help.")
-	logging.info(f"Args: Reading weights from {weights.name}")
-	weights = csv.DictReader(weights)
-	logging.debug(f"{type(weights)}")
-	return (sbjgeno, snpinfo, weights)
+	return (sbjgeno, snpinfo)
 
 # Another quick'n'dirty function which should probably be done cleaner
 #	TODO: Should probably cll getGenoType iterably over the snp objects

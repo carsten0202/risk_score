@@ -252,25 +252,24 @@ def ReadInfo(infofobj):
 	return snps
 
 # Should add this guy to SNP class since it returns a SNP object
-def ReadVCF(vcfiter, drop_genotypes=True):
-	"""Read SNP information from a VCF file using PyVCF. Because this is slow, sample/genotype information is not read by default, but can be enabled"""
-	import vcf
+def ReadVCF(variter, drop_genotypes=True):
+	"""Read SNP information from a BCF/VCF file using PySAM. Sample/genotype information is not read by default, but can be enabled"""
 	snps = OrderedDict()
-	for record in vcfiter:
-		if record.ALT == "P": # Pretty dirty hack to capture data which are not a locus; like haplotypes from snp2hla.
-			snp = SNP(ID=record.ID, REF=record.REF, ALT=record.ALT, INFO=record.INFO, FORMAT=record.FORMAT)
+	for record in variter.fetch():
+		if "P" in record.alts: # Pretty dirty hack to capture data which are not a locus; like haplotypes from snp2hla.
+			snp = SNP(ID=record.id, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)
 		else:
-			snp = SNP(ID=record.ID, CHROM=record.CHROM, POS=record.POS, REF=record.REF, ALT=record.ALT, INFO=record.INFO, FORMAT=record.FORMAT)
+			snp = SNP(ID=record.id, CHROM=record.chrom, POS=record.pos, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)
 		if drop_genotypes is False:
 # This should be part of a class method; not freeform like this... set_genotype, add_genotype... or someshit...
 #    Maybe even call some class which extends SNP and not SNP itself...
 			genotype = namedtuple('genotype', 'subjectid bases dosage phased')
 			snp["genotype"] = []
-			for gt in record.samples:
-				dosage = gt["DS"] if "DS" in gt.data._fields else None
-				bases = re.split("[/|]+", gt.gt_bases)
-				snp["genotype"].append(genotype(subjectid=gt.sample, bases=bases, dosage=dosage, phased=gt.phased))
-		snps[record.ID] = snp
+			for acc, sample in record.samples.iteritems():
+				dosage = sample["DS"] if "DS" in sample.keys() else None
+				bases = sample.alleles
+				snp["genotype"].append(genotype(subjectid=acc, bases=bases, dosage=dosage, phased=sample.phased))
+		snps[record.id] = snp
 	return snps
 
 

@@ -88,7 +88,7 @@ class MultiRiskScore(RiskScore):
 	"""Calculate GRS based on MultiLocus Weights."""
 	def __init__(self, snps, risks, multirisks, *args, **kwargs):
 		super().__init__(snps=snps, risks=risks, *args, **kwargs)
-		self.multi = self.ReadMultiRisk(csv.DictReader(multirisks))
+		self.multi = self.ReadMultiRisk(multirisks)
 
 	def calc(self, gtdict, **kwargs): # This guy still works on two levels; isn't nested like ReadMultiRisk now is.
 		"""Calculate the Multilocus part of a GRS.
@@ -131,6 +131,7 @@ class MultiRiskScore(RiskScore):
 
 		nested_dict = dict()
 		for risk in risk_iter:
+			logging.debug(f"ReadMultiRisk: Reading {risk}")
 			if risk.get("GENOTYPE_1"):
 				nested_dict = nested_read(risk, nested_dict)
 		return nested_dict
@@ -147,6 +148,7 @@ class oram2016(MultiRiskScore):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.N = 2 * (self.N + 1)
+
 
 
 
