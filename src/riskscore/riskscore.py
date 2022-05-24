@@ -1,6 +1,3 @@
-#!/home/fls530/miniconda3/envs/myscripts/bin/python
-
-#  riskscore.py
 
 ##################################################
 #
@@ -15,8 +12,9 @@ import sys
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
 
-ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute())
-sys.path = [ScriptPath + '/src'] + sys.path
+#ScriptPath = str(pathlib.Path(__file__).resolve().parent.absolute().parents[1])
+#sys.path = [ScriptPath + '/src'] + sys.path
+#print(ScriptPath)
  
 import pklib.pkcsv as csv
 import pklib.pkclick as click
@@ -137,8 +135,8 @@ def aggregate(geno, info, denominator, vcf, weights):
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/test-data/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
-@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/test-data/oram2016.weights.txt", show_default=True, help=OPTION.weights)
+@click.option('-m','--multilocus', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
+@click.option('-w','--weights', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.txt", show_default=True, help=OPTION.weights)
 def oram2016(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Oram et al 2016.
 
@@ -161,8 +159,8 @@ https://doi.org/10.2337/dc15-1111
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/test-data/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('-w', "--weights", type=click.CSVFile(), default=f"{ScriptPath}/test-data/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
+@click.option('-w', "--weights", type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
 def sharp2019(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Sharp et al 2019.
 
@@ -185,9 +183,9 @@ https://doi.org/10.2337/dc18-1785
 
 
 @main.command(no_args_is_help=True, hidden=True)
-@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
+@click.option('-m','--multilocus', type=click.CSVFile(), default=f"~fls530/python/risk_score/oram2016.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
 @click.option('--vcf', type=click.VCFFile(), default="/emc/cbmr/users/fls530/grs_t1d_translate/test.vcf.gz", help=OPTION.vcf)
-@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-w','--weights', type=click.CSVFile(), default=f"~fls530/python/risk_score/oram2016.weights.txt", help=OPTION.weights, show_default=True)
 def test(vcf, weights, multilocus):
 	"""FOR TESTING PURPOSES ONLY; DO NOT USE!"""
 	vcfdata = snps.ReadVCF(vcf, drop_genotypes=False)
@@ -234,9 +232,4 @@ def transpose_geno(genoiter):
 # --%%  END: Subroutines  %%--
 #
 ##################################################
-
-
-if __name__ == '__main__':
-	main()
-
 
