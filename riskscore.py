@@ -20,8 +20,8 @@ sys.path = [ScriptPath + '/src'] + sys.path
  
 import pklib.pkcsv as csv
 import pklib.pkclick as click
-import pksnps as snps
-import pkrs as riskscore
+import pksnp.pksnp as snps
+import pkrs.pkrs as riskscore
 
 Version = "1.2"
 
@@ -137,8 +137,8 @@ def aggregate(geno, info, denominator, vcf, weights):
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
-@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/oram2016.weights.txt", show_default=True, help=OPTION.weights)
+@click.option('-m','--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/test-data/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
+@click.option('-w','--weights', type=click.CSVFile(), default=f"{ScriptPath}/test-data/oram2016.weights.txt", show_default=True, help=OPTION.weights)
 def oram2016(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Oram et al 2016.
 
@@ -161,8 +161,8 @@ https://doi.org/10.2337/dc15-1111
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('-w', "--weights", type=click.CSVFile(), default=f"{ScriptPath}/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"{ScriptPath}/test-data/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
+@click.option('-w', "--weights", type=click.CSVFile(), default=f"{ScriptPath}/test-data/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
 def sharp2019(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Sharp et al 2019.
 
@@ -211,7 +211,7 @@ def test(vcf, weights, multilocus):
 def process_args(geno=None, info=None, vcf=None, *args):
 	"""Prep and prepare. Provide the link between the input parameters and the RiskScore classes."""
 	if vcf:
-		vcfdata = snps.ReadVCF(vcf, drop_genotypes=False)
+		vcfdata = snps.ReadPySAM(vcf, drop_genotypes=False)
 		sbjgeno = transpose_geno([snp.genotype() for snp in vcfdata.values()])
 		snpinfo = [snp.drop_genotype() for snp in vcfdata.values()]
 	elif (geno and info):
