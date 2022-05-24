@@ -252,7 +252,7 @@ def ReadInfo(infofobj):
 	return snps
 
 # Should add this guy to SNP class since it returns a SNP object
-def ReadVCF(variter, drop_genotypes=True):
+def ReadPySAM(variter, drop_genotypes=True):
 	"""Read SNP information from a BCF/VCF file using PySAM. Sample/genotype information is not read by default, but can be enabled"""
 	snps = OrderedDict()
 	for record in variter.fetch():

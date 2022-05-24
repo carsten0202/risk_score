@@ -17,7 +17,7 @@ import re
 import sys
 
 import pklib.pkcsv as csv
-import pksnps
+import pksnp.pksnp as pksnp
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class RiskScore:
 			chrom = risk.get("CHROM", re.split(":", risk.get("POSID",":"))[0])
 			pos   = risk.get("POS", re.split(":|_", risk.get("POSID",":"))[1])
 			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
-			try: risks.append(pksnps.Allele(CHROM=str(chrom), POS=int(pos), allele=str(risk.get("ALLELE")), BETA=float(beta)))
+			try: risks.append(pksnp.Allele(CHROM=str(chrom), POS=int(pos), allele=str(risk.get("ALLELE")), BETA=float(beta)))
 			except AttributeError as ae: 
 				print("\n" + str(ae), file=sys.stderr)
 				sys.exit("Read Error: Each line of '" + str(riskiter.get("name","weights file")) + "' must contain at least weight value with a recognizable position and allele.\n")
@@ -121,7 +121,7 @@ class MultiRiskScore(RiskScore):
 			pos   = risk.get("POS_" + str(i), risk.get("POSID_" + str(i),":").split(":")[1])
 			myid  = risk.get("ID_" + str(i))
 			try:
-				gtype = pksnps.GenoType(ID=myid, CHROM=chrom, POS=pos, genotype=risk.get("GENOTYPE_" + str(i), "").split(":"))
+				gtype = pksnp.GenoType(ID=myid, CHROM=chrom, POS=pos, genotype=risk.get("GENOTYPE_" + str(i), "").split(":"))
 			except (AssertionError, AttributeError) as ae:
 				beta = float(risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1)))))
 				assert beta and isinstance(nested_dict, dict), "Each line of multilocus weights file must contain one weight and at least one recognizable allele or genotype."
@@ -200,7 +200,7 @@ class sharp2019(MultiRiskScore):
 			pos   = risk.get("POS_" + str(i), risk.get("POSID_" + str(i),":").split(":")[1])
 			myid  = risk.get("ID_" + str(i))
 			try:
-				gtype = pksnps.Allele(ID=myid, CHROM=chrom, POS=pos, allele=risk.get("ALLELE_" + str(i), ""))
+				gtype = pksnp.Allele(ID=myid, CHROM=chrom, POS=pos, allele=risk.get("ALLELE_" + str(i), ""))
 			except (AssertionError, AttributeError) as ae:
 				beta = float(risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1)))))
 				assert beta and isinstance(nested_dict, dict), "Each line of multilocus weights file must contain one weight and at least one recognizable allele or genotype."
