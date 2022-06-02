@@ -5,6 +5,7 @@
 # ---%%%  PKSNPS.py: Module to hold the SNP class  %%%---
 #
 
+import logging
 import math
 import re
 import sys
@@ -12,8 +13,7 @@ from collections import OrderedDict, namedtuple, UserDict
 
 import pklib.pkcsv as csv
 
-
-
+logger = logging.getLogger(__name__)
 
 
 
@@ -226,6 +226,87 @@ class GenoType(Locus):
 
 
 
+
+#################################################
+#
+# --%%  CLASS: Cohort  %%--
+
+class Cohort(object):
+	"""An Umbrella Class for holding a collection of SNPs from a cohort with or without Genotype data."""
+	def __init__(self, snpinfo=None, sbjgeno=None, *args, **kwargs):
+		"""Init cohort object. snpinfo: [SNPs] and sbjgeno: {sbjid:{snpid:GenoType}} are snp-centric data."""
+		super().__init__(*args, **kwargs)
+		self._snpinfo   = snpinfo
+		self._genotypes = sbjgeno
+
+	@property
+	def genotypes(self):
+		"""Get the genotype information."""
+		return self._genotypes
+
+	@property
+	def snpinfo(self):
+		"""Get the snp information (i.e. data on the vartiants)."""
+		return self._snpinfo
+
+	@staticmethod
+	def _transpose(genoiter):
+		"""Build the genotype matrix (SNP-centric GenoTypes -> {sbjid:{snpid:GenoType}}) (often needed when reading from a VCF file)."""
+		import collections
+		dict_dicts = collections.defaultdict(dict)
+		for geno_dict in genoiter:
+			for sbjid, gt in geno_dict.items():
+				dict_dicts[sbjid][gt.ID] = gt
+		return dict_dicts
+
+	@classmethod
+	def FromPySAM(cls, variter, drop_genotypes=False, filterids=None):
+		"""Constructor from a PySAM VariantFile object. filterid: only return SNP if record.id is in this list of strings."""
+		snps = OrderedDict()
+		for count, record in enumerate(variter.fetch()):
+			if filterids and record.id not in filterids:
+				next
+			if not count % 1000 and count:
+				logger.info(f"FromPySAM: Reading variant data. {count} variants read.")
+			if "P" in record.alts: # Pretty dirty hack to capture data which are not a locus; like haplotypes from snp2hla.
+				snp = SNP(ID=record.id, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)
+			else:
+				snp = SNP(ID=record.id, CHROM=record.chrom, POS=record.pos, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)
+			if drop_genotypes is False: # This shit should be done much nicer with getters and setters 
+# This should be part of a class method; not freeform like this... set_genotype, add_genotype... or someshit...
+#    Maybe even call some class which extends SNP and not SNP itself... Name: Variant(s)?
+				genotype = namedtuple('genotype', 'subjectid bases dosage phased')
+				snp["genotype"] = []
+				for acc, sample in record.samples.iteritems():
+					dosage = sample["DS"] if "DS" in sample.keys() else None
+					bases = sample.alleles
+					snp["genotype"].append(genotype(subjectid=acc, bases=bases, dosage=dosage, phased=sample.phased))
+			snps[record.id] = snp
+		sbjgeno = cls._transpose([snp.genotype() for snp in snps.values()])
+		snpinfo = [snp.drop_genotype() for snp in snps.values()]
+		logger.info(f"FromPySAM: Finished reading. {count} variants read.")
+		return cls(snpinfo, sbjgeno)
+
+	@classmethod
+	def FromGenoInfo(cls, genofobj, infofobj):
+		"""Constructor from a Geno Info file object pair."""
+		snps = list()
+		infoiter = csv.DictReader(infofobj)
+		for info in infoiter:
+			alt = re.sub("[\[\]]+","",info.get("ALT", ""))
+			snps.append(SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=alt))
+		geno = OrderedDict()
+		for subject in csv.DictReader(genofobj):
+			subjectid = subject.pop("")
+			geno[subjectid] = OrderedDict()
+			for snpid, value in subject.items():
+				dosage = sum([float(x) for x in re.split("[/|]+", value)])
+				geno[subjectid][snpid] = info[snpid].getGenoType(dosage) # For now dosage info is stored as maximum likelihood genotypes
+		return cls(snps, geno)
+
+
+
+
 #################################################
 #
 # --%%  Constructor Functions  %%--
@@ -251,7 +332,7 @@ def ReadInfo(infofobj):
 		snps[info.get("ID")] = SNP(ID=info.get("ID"), CHROM=info.get("CHROM"), POS=info.get("POS"), REF=info.get("REF"), ALT=alt)
 	return snps
 
-# Should add this guy to SNP class since it returns a SNP object
+# This guy needs cleaning...
 def ReadPySAM(variter, drop_genotypes=True):
 	"""Read SNP information from a BCF/VCF file using PySAM. Sample/genotype information is not read by default, but can be enabled"""
 	snps = OrderedDict()

@@ -31,21 +31,16 @@ logger = logging.getLogger(__name__)
 class RiskScore:
 	"""An algorithm template object for holding the definition of a weight-based risk score.
 	   Input should be an iterable of SNPs and an iterable of Alleles (with BETA defined)"""
-	def __init__(self, snps, risks, N=None):
+	def __init__(self, risks, N=None, snps=None):
 		self.beta   = dict()
-		if isinstance(snps, dict):
-			snps = snps.values()
-		self.snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
-		risks = self.ReadRisk(risks)
-		self.N = len(risks) if N is None else float(N)
+		self.risks = self.ReadRisk(risks)
+		self.N = len(self.risks) if N is None else float(N)
 		assert self.N > 0, f"The denominator given with '-n' ('{self.N}') for the arithmetric mean must be >0."
 		logger.debug(f"RiskScore: Setting N={self.N}")
-		for risk in risks:
-			if risk not in snps:
-				logger.warning(f"RiskScore: Weighted allele '{risk}' not found in subject data. Did you provide the correct subject variants?")
-			for snp in snps:
-				if snp == risk:
-					self.beta[risk]   = float(risk.get("BETA",0))
+		for risk in self.risks:
+			self.beta[risk]   = float(risk.get("BETA",0))
+		if snps:
+			self.validate(snps)
 
 	def calc(self, gtdict):
 		"""This function implements a simple risk score based on a weighted sum.
@@ -61,7 +56,7 @@ class RiskScore:
 
 	@staticmethod
 	def ReadRisk(riskiter):
-		"""Input: An iterator); Return: List of Alleles"""
+		"""Input: An iterator giving something with a 'get' method; Return: List of Alleles"""
 		risks = []
 		logger.debug(f"ReadRisk: {type(riskiter)}")
 		for risk in riskiter:
@@ -78,6 +73,62 @@ class RiskScore:
 				sys.exit("Read Error: Looks like some weights data are not following the expected format.")
 		return risks
 
+	def validate(self, snps):
+		"""Validates that SNPs in the score match with SNPs in the input data."""
+		if isinstance(snps, dict):
+			snps = snps.values()
+		snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
+		for risk in self.risks:
+			if risk not in snps:
+				logger.warning(f"RiskScore: Weighted allele '{risk}' not found in subject data. Did you provide the correct subject variants?")
+
+
+
+
+#################################################
+#
+# --%%  CLASS: PGSCatalog  %%--
+
+class PGSCatalog(RiskScore):
+	"""Class to handle risk scores downloaded from the PGSCatalog."""
+	def __init__(self, pgs, *args, risks=[], **kwargs):
+		"""Like RiskScore; just need to format the pgs risks correctly (pgs should be the return of pyclick.CSVFile() or similar)."""
+		logger.debug(f"PGSCatalog: {type(pgs)}")
+		if not risks:
+			for line in pgs:
+				logger.debug(f"PGSCatalog: {line}")
+				risk = {}
+				risk['RSID']   = line.get('rsID')
+				risk['CHROM']  = line.get('chr_name')
+				risk['POS']    = line.get('chr_position')
+				risk['ALLELE'] = line.get('effect_allele')
+				risk['BETA']   = line.get('effect_weight')
+				risks.append(risk)
+		super().__init__(risks=risks, *args, **kwargs)
+
+"""
+PGS Format from: https://www.pgscatalog.org/downloads/#scoring_columns
+rsID	dbSNP Accession ID (rsID)	Optional
+chr_name	Location - Chromosome 	Required
+chr_position	Location - Position within the Chromosome	Required
+effect_allele	Effect Allele	Required
+other_allele	Other allele(s)	Recommended
+locus_name	Locus Name	Optional
+is_haplotype
+is_diplotype	FLAG: Haplotype or Diplotype	Optional
+imputation_method	Imputation Method	Optional
+variant_description	Variant Description	Optional
+inclusion_criteria	Score Inclusion Criteria	Optional
+effect_weight	Variant Weight	Required
+is_interaction	FLAG: Interaction	Optional
+is_dominant	FLAG: Dominant Inheritance Model	Optional
+is_recessive	FLAG: Recessive Inheritance Model	Optional
+dosage_0_weight	Effect weight with 0 copy of the effect allele	Optional
+dosage_1_weight	Effect weight with 1 copy of the effect allele	Optional
+dosage_2_weight
+"""
+
+
 
 
 #################################################
@@ -86,8 +137,8 @@ class RiskScore:
 
 class MultiRiskScore(RiskScore):
 	"""Calculate GRS based on MultiLocus Weights."""
-	def __init__(self, snps, risks, multirisks, *args, **kwargs):
-		super().__init__(snps=snps, risks=risks, *args, **kwargs)
+	def __init__(self, risks, multirisks, *args, **kwargs):
+		super().__init__(risks=risks, *args, **kwargs)
 		self.multi = self.ReadMultiRisk(multirisks)
 
 	def calc(self, gtdict, **kwargs): # This guy still works on two levels; isn't nested like ReadMultiRisk now is.
