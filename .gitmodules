@@ -1,3 +1,3 @@
 [submodule "src/pklib"]
 	path = src/pklib
-	url = https://github.com:carsten0202/pkmodules
+	url = https://github.com/carsten0202/pkmodules
