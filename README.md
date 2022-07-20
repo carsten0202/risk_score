@@ -8,6 +8,6 @@ Predefined weights are included based on the previously published algorithms, bu
 
 Should be possible to install with:
 
-'''
+```
 pip install git+https://github.com/carsten0202/risk_score
-'''
+```
