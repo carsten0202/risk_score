@@ -6,4 +6,8 @@ Reads a (vcf) file with population/sample genotype information and outputs a gen
 
 Predefined weights are included based on the previously published algorithms, but the user can override these if desired.
 
+Should be possible to install with:
 
+```
+pip install git+https://github.com/carsten0202/risk_score
+```
