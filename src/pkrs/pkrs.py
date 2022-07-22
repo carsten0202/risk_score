@@ -19,6 +19,8 @@ import sys
 import pklib.pkcsv as csv
 import pksnp.pksnp as pksnp
 
+from collections import OrderedDict, namedtuple, UserDict
+
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 class RiskScore:
 	"""An algorithm template object for holding the definition of a weight-based risk score.
 	   Input should be an iterable of SNPs and an iterable of Alleles (with BETA defined)"""
-	def __init__(self, risks, N=None, snps=None):
+	def __init__(self, risks, N=None):
 		self.beta   = dict()
 		self.risks = self.ReadRisk(risks)
 		self.N = len(self.risks) if N is None else float(N)
@@ -39,20 +41,44 @@ class RiskScore:
 		logger.debug(f"RiskScore: Setting N={self.N}")
 		for risk in self.risks:
 			self.beta[risk]   = float(risk.get("BETA",0))
-		if snps:
-			self.validate(snps)
 
-	def calc(self, gtdict):
+	@property
+	def alleles(self):
+		"""Some kind of function to output the allelic information. i.e. the positions+bases, but not the weights."""
+		return self._risks
+
+	@property
+	def risks(self):
+		"""Alternate name for getting the risk alleles. Just for convenience."""
+		return self._risks
+
+	@property
+	def risks_rsids(self):
+		"""Get the rsids for the risks. Note that this guy is broken as the 'ID' slot may hold other types of ids.."""
+		return [allele.ID for allele in self._risks]
+
+	@risks.setter
+	def risks(self, value):
+		""""""
+		self._risks = value
+
+	def calc(self, alleles):
 		"""This function implements a simple risk score based on a weighted sum.
-		   gtdict:	Subject dict with str(var_id):float(dosage)"""
+			alleles: Subject dict with Allele:float(dosage)."""
 		wsum = 0
-		gtlist = list(gtdict.values())
-		alleles = {allele:allele.dosage for gt in gtlist for allele in gt.getAlleles()}
-		for allele,wgt in self.beta.items():
+		for allele, wgt in self.beta.items():
 			wsum += wgt * alleles.get(allele, 0)
-			if alleles.get(allele):
-				logger.debug(f"Calc Aggregate: '{allele}' found; weight = {wgt}, dosage = {alleles.get(allele,0)}; wsum = {wsum}")
+			logger.debug(f"Calc Aggregate: Allele = '{allele}'; weight = {wgt}, dosage = {alleles.get(allele,0)}; wsum = {wsum}")
 		return wsum / self.N
+
+	def calc_by_snp(self, snpiter):
+		"""Calculate GRS incrementally by snp for all subjects. e.g. when reading from a vcf."""
+		wsums = OrderedDict()
+		for snp in snpiter:
+			for subjectid, gt in snp.samples_iteritems():
+				wsums[subjectid] = wsums.get(subjectid,0) + sum(self.beta.get(allele,0) * allele.dosage for allele in gt.alleles) / self.N
+			logger.debug(f"{subjectid} [allele, dosage, risk] = {list([allele,allele.dosage,self.beta.get(allele,0)] for allele in gt.alleles)} wsum = {wsums[subjectid]}")
+		return wsums
 
 	@staticmethod
 	def ReadRisk(riskiter):
@@ -61,6 +87,7 @@ class RiskScore:
 		logger.debug(f"ReadRisk: {type(riskiter)}")
 		for risk in riskiter:
 			logger.debug(f"ReadRisk: {risk}")
+			rsid  = risk.get("RSID")
 			chrom = risk.get("CHROM", re.split(":", risk.get("POSID",":"))[0])
 			pos   = risk.get("POS", re.split(":|_", risk.get("POSID",":"))[1])
 			beta  = risk.get("BETA", math.log(float(risk.get("ODDSRATIO", 1))))
@@ -73,15 +100,6 @@ class RiskScore:
 				sys.exit("Read Error: Looks like some weights data are not following the expected format.")
 		return risks
 
-	def validate(self, snps):
-		"""Validates that SNPs in the score match with SNPs in the input data."""
-		if isinstance(snps, dict):
-			snps = snps.values()
-		snps   = dict(zip([s.ID for s in snps], snps))   # Dict of SNP instances
-		for risk in self.risks:
-			if risk not in snps:
-				logger.warning(f"RiskScore: Weighted allele '{risk}' not found in subject data. Did you provide the correct subject variants?")
-
 
 
 
@@ -92,18 +110,19 @@ class RiskScore:
 class PGSCatalog(RiskScore):
 	"""Class to handle risk scores downloaded from the PGSCatalog."""
 	def __init__(self, pgs, *args, risks=[], **kwargs):
-		"""Like RiskScore; just need to format the pgs risks correctly (pgs should be the return of pyclick.CSVFile() or similar)."""
+		"""Like RiskScore; we just need to format the pgs risks correctly (pgs should be the return of pyclick.CSVFile() or
+		   similar). Any predefined weights in 'risks' will be kept, mostly to provide a unified interface between the
+		   RiskScore classes, but it does allow you to stack weights, if you want."""
 		logger.debug(f"PGSCatalog: {type(pgs)}")
-		if not risks:
-			for line in pgs:
-				logger.debug(f"PGSCatalog: {line}")
-				risk = {}
-				risk['RSID']   = line.get('rsID')
-				risk['CHROM']  = line.get('chr_name')
-				risk['POS']    = line.get('chr_position')
-				risk['ALLELE'] = line.get('effect_allele')
-				risk['BETA']   = line.get('effect_weight')
-				risks.append(risk)
+		for line in pgs:
+			logger.debug(f"PGSCatalog: {line}")
+			risk = {}
+			risk['RSID']   = line.get('rsID')
+			risk['CHROM']  = line.get('chr_name')
+			risk['POS']    = line.get('chr_position')
+			risk['ALLELE'] = line.get('effect_allele')
+			risk['BETA']   = line.get('effect_weight')
+			risks.append(risk)
 		super().__init__(risks=risks, *args, **kwargs)
 
 """
@@ -143,8 +162,13 @@ class MultiRiskScore(RiskScore):
 
 	def calc(self, gtdict, **kwargs): # This guy still works on two levels; isn't nested like ReadMultiRisk now is.
 		"""Calculate the Multilocus part of a GRS.
-		   gtdict => dict {str(id):GenoType}; RETURN: A risk score (float)"""
-		wsum = super().calc(gtdict, **kwargs)
+			gtdict => dict {str(snpid):GenoType};
+			Return => A risk score (float)"""
+		alleles = dict()
+		for gt in gtdict.values():
+			for allele in gt.alleles:
+				alleles[allele] = allele.dosage
+		wsum = super().calc(alleles, **kwargs)
 		if mrs := self.nested_lookup(self.multi, gtdict.values()):
 			logger.debug(f"Calc MultiRiskScore: found weight = {mrs}")
 			wsum += mrs / self.N
@@ -228,7 +252,7 @@ class sharp2019(MultiRiskScore):
 			return [wsum]
 		wsum = []
 		import itertools
-		subject_alleles = list(itertools.chain(*[gt.getAlleles(True) for gt in subject]))
+		subject_alleles = list(itertools.chain(*[gt.alleles for gt in subject]))
 		if isinstance(nested_dict, dict):
 			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
 				if haplo in subject_alleles:

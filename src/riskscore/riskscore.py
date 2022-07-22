@@ -17,7 +17,7 @@ import pklib.pkclick as click
 import pksnp.pksnp as snps
 import pkrs.pkrs as riskscore
 
-Version = "1.3"
+Version = "1.4"
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
@@ -70,7 +70,7 @@ OPTION = namedtuple('Options', ['geno','info','log','n','pgs','vcf','weights','m
 	geno = """Geno file of the type created by SNPextractor.""",
 	info = """Info file of the type created by SNPextractor.""",
 	log  = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
-	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation. Default: Number of lines in weights file minus header.""",
+	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation. Default: Number of lines in weights file ignoring the header.""",
 	pgs  = """Risk score file obtained from the PGSCatalog. See: https://www.pgscatalog.org/.""",
 	vcf  = """
 Load VCF File using PyVCF VCFv4.0 and 4.1 parser for Python. Note that this option requires reading the entire VCF into
@@ -84,14 +84,12 @@ files in size.
 # Notes and TODOs:
 
 # TODO: When reading from VCF we should include an option for selecting the field you want; eg GT or DS, etc.
-# TODO: Use the filterid variable to filter input snps so that you can scan larger files.
-# TODO: It's a bit half-assed that the RiskScore requires a list of snps. Shouldn't be needed; the weights have the SNP info!
 # TODO: The filtering isn't complete in pkcsv. I only filter '#' at the beginning, but we should do it in the whole file.
-# TODO: When reading geno format, it should read one line at a time. Will use less memory and be much faster.
 
 # --%%  END: Perform Basic Setup  %%--
 #
 ##################################################
+
 
 
 
@@ -124,14 +122,15 @@ def main(log):
 @click.option('-w','--weights', type=click.CSVFile(), default=None, help=OPTION.weights)
 def aggregate(geno, info, denominator, vcf, weights):
 	"""Calculate Aggregated (linear) Risk Score from user-provided weights."""
+	assert weights, f"ERROR: You must specify a weights file."
 	grs = riskscore.RiskScore(risks=weights)
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		cohort = snps.Cohort.FromPySAM(vcf, drop_genotypes=False)
+		snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
+		for subjectid, rs in grs.calc_by_snp(snpiter).items():
+			print(f"{subjectid}\t{round(rs,6)}")
 	else:
-		cohort = snps.Cohort.FromGenoInfo(geno, info)
-	for sbjid, gt in cohort.genotypes.items():
-		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
-		print(sbjid + "\t" + str(grs.calc(gt)))
+		for subject_id, alleles in snps.read_alleles(geno, info):
+			print(f"{subject_id}\t{round(grs.calc(alleles),6)}")
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
@@ -151,16 +150,12 @@ Diabetes care 39 (3), 337-344.
 https://doi.org/10.2337/dc15-1111
 """
 	grs = riskscore.oram2016(risks=weights, multirisks=multilocus)
-	logging.info(f"{[risk.ID for risk in grs.risks]}")
-	logging.info(f"{[risk.CHROM for risk in grs.risks]}")
-	logging.info(f"{[risk.POS for risk in grs.risks]}") # TODO: Fix it to use Allele class to filter input.
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		cohort = snps.Cohort.FromPySAM(vcf, drop_genotypes=False)
+		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
 	else:
-		cohort = snps.Cohort.FromGenoInfo(geno, info)
-	for sbjid, gt in cohort.genotypes.items():
-		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
-		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
+		subject_iter = snps.read_genotypes(geno, info)
+	for subject_id, genotypes in subject_iter:
+		print(f"{subject_id}\t{round(grs.calc(genotypes),6)}")
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
@@ -179,14 +174,14 @@ JM Locke, JT, MN Weedon, WA Hagopian, RA Oram.
 Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
+	sys.exit("SORRY! The sharp2019 calculation is currently broken. I'll try to fix it in the next release.")
 	grs = riskscore.sharp2019(risks=weights, multirisks=multilocus)
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		cohort = snps.Cohort.FromPySAM(vcf, drop_genotypes=False)
+		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
 	else:
-		cohort = snps.Cohort.FromGenoInfo(geno, info)
-	for sbjid, gt in cohort.genotypes.items():
-		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
-		print("{subject}\t{grs}".format(subject=sbjid, grs=round(grs.calc(gt),4)))
+		subject_iter = snps.read_genotypes(geno, info)
+	for subject_id, genotypes in subject_iter:
+		print(f"{subject_id}\t{round(grs.calc(genotypes),6)}")
 
 
 @main.command(cls=StdCommand, no_args_is_help=True)
@@ -198,11 +193,15 @@ Warning: This script is slow and memory inefficient if you load in large data
 sets. Take care if your PGS score involves more than 10.000 SNPs.
 
 THIS COMMAND IS NOT WELL TESTED YET. USE WITH CAUTION."""
+	assert pgs, f"ERROR: You must specify a pgs catalogue file."
 	grs = riskscore.PGSCatalog(pgs=pgs)
-	cohort = snps.Cohort.FromPySAM(vcf, drop_genotypes=False)
-	for subjectid, gt in cohort.genotypes.items():
-		logging.debug(f"Subject '{sbjid}' alleles: {gt}")
-		print(subjectid + "\t" + str(grs.calc(gt)))
+	if isinstance(check_args(geno, info, vcf), type(vcf)):
+		snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
+		for subjectid, rs in grs.calc_by_snp(snpiter).items():
+			print(f"{subjectid}\t{round(rs,6)}")
+	else:
+		for subject_id, alleles in snps.read_alleles(geno, info):
+			print(f"{subject_id}\t{round(grs.calc(alleles),6)}")
 
 
 @main.command(no_args_is_help=True, hidden=True)
@@ -211,11 +210,11 @@ THIS COMMAND IS NOT WELL TESTED YET. USE WITH CAUTION."""
 @click.option('-w','--weights', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.txt", help=OPTION.weights, show_default=True)
 def test(vcf, weights, multilocus):
 	"""FOR TESTING PURPOSES ONLY; DO NOT USE!"""
-	grs = riskscore.oram2016(risks=weights, multirisks=multilocus)
-	vcfdata = snps.ReadPySAM(vcf, drop_genotypes=False)
-	snpinfo = [snp.drop_genotype() for snp in vcfdata.values()]
-	for subjectid, gt in sbjgeno.items():
-		print(subjectid + "\t" + str(grs.calc(gt)))
+	logger.warning(f"FOR TESTING PURPOSES ONLY; DO NOT USE!")
+	grs = riskscore.RiskScore(risks=weights)
+	snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
+	for subjectid, rs in grs.calc_by_snp(snpiter).items():
+		print(f"{subjectid}\t{rs}")
 
 # --%%  END: Define Commands  %%--
 #
