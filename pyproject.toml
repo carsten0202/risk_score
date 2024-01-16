@@ -26,7 +26,7 @@ dependencies = [
  dynamic = ["version"]
 
 [project.scripts]
-    riskscore = "riskscore:main"
+    riskscore = "riskscore:Riskscore"
 
 [tool.setuptools.dynamic]
 version = {attr = "riskscore.version.__version__ "}
