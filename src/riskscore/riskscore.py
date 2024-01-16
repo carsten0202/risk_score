@@ -15,7 +15,7 @@ import pklib.pkcsv as csv
 import pklib.pkclick as click
 import pksnp.pksnp as snps
 import pkrs.pkrs as riskscore
-from riskscore.src.riskscore.version import __version__
+from riskscore.version import __version__
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
