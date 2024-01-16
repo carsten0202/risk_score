@@ -48,7 +48,6 @@ class Dosage(object):
 
 
 
-
 ##################################################
 #
 # --%%  : 'Locus' Class Definition  %%--

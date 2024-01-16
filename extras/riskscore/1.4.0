@@ -1,0 +1,54 @@
+#%Module1.0#######################################################################
+#
+# Riskscore
+#
+# Author:       Carsten Friis Rundsten
+# Date:         15/01/2024
+#
+#################################################################################
+
+#
+# Help messages
+
+proc ModulesHelp { } {
+   set name [file dirname [module-info name]]
+   set version [file tail [module-info name]]
+   puts stderr "\tLoads the ${name} version ${version} environment"
+   puts stderr "\tFor further information, use 'module display [module-info name]'"
+}
+
+proc ModulesDisplay { } {
+   puts stderr "\nRiskscore is a tool for calculating risk score from a small to moderate number of variants.\n"
+   puts stderr "\triskscore - Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."
+}
+
+
+#
+# Variables, Conflicts and Prereqs, Whatis
+
+set name [file dirname [module-info name]]
+set version [file tail [module-info name]]
+
+conflict "${name}"
+#prereq "mamba"
+
+module-whatis "${name} ${version} - Riskscore ..."
+
+
+#
+# Modify environment variables
+
+set basedir "/projects/cbmr_shared/apps/modules/software/${name}/${version}"
+
+# Add bin to PATH
+prepend-path PATH "${basedir}/bin"
+
+# Add python lib to PYTHONPATH
+prepend-path PYTHONPATH "${basedir}/"
+
+# Set database variables
+setenv RISKSCORE_ORAM2016_MULTILOCUS "/projects/cbmr_shared/data/common_resources/riskscore/oram2016.weights.multilocus.txt"
+setenv RISKSCORE_ORAM2016_WEIGHTS "/projects/cbmr_shared/data/common_resources/riskscore/oram2016.weights.txt"
+setenv RISKSCORE_SHARP2019_MULTILOCUS "/projects/cbmr_shared/data/common_resources/riskscore/sharp2019.weights.multilocus.txt"
+setenv RISKSCORE_SHARP2019_WEIGHTS "/projects/cbmr_shared/data/common_resources/riskscore/sharp2019.weights.txt"
+

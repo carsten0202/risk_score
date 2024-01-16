@@ -1,4 +1,31 @@
+
 [build-system]
-requires = ["setuptools>=42"]
+requires = [
+    "setuptools>=49",
+    "wheel",
+    "setuptools-scm",
+]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "riskscore"
+authors = [
+    { name = "Carsten Friis Rundsten", email = "carsten.rundsten@sund.ku.dk" },
+]
+description = "Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GNU-GLPv3"}
+dependencies = [
+    "click>8.0",
+    "numpy>1.23",
+    "pandas>2.0",
+    "isal>1.1.0",
+]
+ dynamic = ["version"]
+
+[project.scripts]
+    riskscore = "riskscore:riskscore"
+
+[tool.setuptools.dynamic]
+version = {attr = "riskscore.version.__version__ "}

@@ -6,8 +6,7 @@
 # import click
 from collections import namedtuple
 import logging
-import pathlib
-import re
+import os
 import sys
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
@@ -16,8 +15,7 @@ import pklib.pkcsv as csv
 import pklib.pkclick as click
 import pksnp.pksnp as snps
 import pkrs.pkrs as riskscore
-
-Version = "1.4"
+from riskscore.src.riskscore.version import __version__
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
@@ -106,10 +104,10 @@ class StdCommand(click.Command):
 		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
 
 @click.group()
-@click.version_option(version=Version)
+@click.version_option(version=__version__)
 @click.option('--log', default="warning", help=OPTION.log, show_default=True)
 def main(log):
-	"""Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined risk weights."""
+	"""Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."""
 	try:
 		log_num = getattr(logging, log.upper())
 	except AttributeError:
@@ -133,9 +131,21 @@ def aggregate(geno, info, denominator, vcf, weights):
 			print(f"{subject_id}\t{round(grs.calc(alleles),6)}")
 
 
+oram2016_multilocus_default = os.environ.get('RISKSCORE_ORAM2016_MULTILOCUS', 'None'),
+oram2016_weights_default    = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', 'None'),
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m','--multilocus', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.multilocus.txt", show_default=True, help=OPTION.multiweights)
-@click.option('-w','--weights', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.txt", show_default=True, help=OPTION.weights)
+@click.option('-m','--multilocus',
+			  type=click.CSVFile(),
+			  envvar='RISKSCORE_ORAM2016_MULTILOCUS',
+			  default=oram2016_multilocus_default,
+			  show_default=True, 
+			  help=OPTION.multiweights)
+@click.option('-w','--weights',
+			  type=click.CSVFile(),
+			  envvar='RISKSCORE_ORAM2016_WEIGHTS',
+			  default=oram2016_weights_default,
+			  show_default=True,
+			  help=OPTION.weights)
 def oram2016(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Oram et al 2016.
 
@@ -158,9 +168,21 @@ https://doi.org/10.2337/dc15-1111
 		print(f"{subject_id}\t{round(grs.calc(genotypes),6)}")
 
 
+sharp2019_multilocus_default = os.environ.get('RISKSCORE_SHARP2019_MULTILOCUS', 'None'),
+sharp2019_weights_default    = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', 'None'),
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m', '--multilocus', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/sharp2019.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('-w', "--weights", type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/sharp2019.weights.txt", help=OPTION.weights, show_default=True)
+@click.option('-m', '--multilocus',
+			  type=click.CSVFile(),
+			  envvar='RISKSCORE_SHARP2019_MULTILOCUS',
+			  default=sharp2019_multilocus_default,
+			  show_default=True,
+			  help=OPTION.multiweights)
+@click.option('-w', "--weights",
+			  type=click.CSVFile(),
+			  envvar='RISKSCORE_SHARP2019_WEIGHTS',
+			  default=sharp2019_weights_default,
+			  show_default=True,
+			  help=OPTION.weights)
 def sharp2019(geno, info, vcf, weights, multilocus):
 	"""Calculate Gene Risk Score based on Sharp et al 2019.
 
