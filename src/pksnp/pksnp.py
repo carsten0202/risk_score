@@ -6,7 +6,6 @@
 #
 
 import logging
-import math
 import re
 import sys
 from collections import OrderedDict, namedtuple, UserDict
@@ -16,7 +15,6 @@ import pysam
 import pklib.pkcsv as csv
 
 logger = logging.getLogger(__name__)
-
 
 
 # There is no proper support for dosage scores in the script yet, but we could add it. Will likely need a dosage class:
@@ -134,8 +132,9 @@ class SNP(Locus):
 	def samples_iteritems(self):
 		"""Generator for key, value pairs where key is Subject ID and Value is a GenoType object."""
 		for sample in self.samples:
-			p = [2 - sample.dosage, sample.dosage]
-			gt = GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype=f"{self.REF}{self.ALT}", phased=sample.phased, p=p)
+			dosage = sample.dosage if sample.dosage else int(self['ALT'] == sample.bases[0]) + int(self['ALT'] == sample.bases[1])
+			p = [2 - dosage, dosage]
+			gt = GenoType(ID=self.ID, CHROM=self.CHROM, POS=self.POS, genotype=(self.REF,self.ALT), phased=sample.phased, p=p)
 			yield (sample.subjectid, gt)
 
 	def getGenoType(self, dosage=None):
@@ -333,7 +332,7 @@ class Cohort(object):
 				next
 			if not count % 1000 and count:
 				logger.info(f"FromPySAM: Reading variant data. {count} variants read.")
-			if "P" in record.alts: # Pretty dirty hack to capture data which are not a locus; like haplotypes from snp2hla.
+			if "P" in record.alts: # Pretty dirty hack to capture data which are not loci; like haplotypes from snp2hla.
 				snp = SNP(ID=record.id, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)
 			else:
 				snp = SNP(ID=record.id, CHROM=record.chrom, POS=record.pos, REF=record.ref, ALT=record.alts, INFO=record.info, FORMAT=record.format)

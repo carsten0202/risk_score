@@ -1,6 +1,10 @@
 
-__version__ = """0.13.0"""
-# v0.12.1: Fixed a ton of parsing errors
-# v0.13.0: Added scaling to derive and fixed a lot of optiuons in ukbiobank. Also fixed snptest.
+__version__ = """1.5.0"""
 
+# v1.5.0: Fixed Sharp2019. Kinda. Its still wonky, and has trouble matching the alleles properly. But it works with some hand-holding.
+
+# Notes and TODOs:
+
+# TODO: When reading from VCF we should include an option for selecting the field you want; eg GT or DS, etc.
+# TODO: The filtering isn't complete in pkcsv. I only filter '#' at the beginning, but we should do it in the whole file.
 

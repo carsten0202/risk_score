@@ -1,3 +1,3 @@
 
 from .version import __version__
-from .riskscore import main as Riskscore
+from .cli import main as Riskscore

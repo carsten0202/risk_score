@@ -9,14 +9,11 @@ Just like the 're' module; you pre-complie a GRS based on a dict of alt alleles 
 
 """
 
-import collections
 import logging
 import math
-import pathlib
 import re
 import sys
 
-import pklib.pkcsv as csv
 import pksnp.pksnp as pksnp
 
 from collections import OrderedDict, namedtuple, UserDict
@@ -164,6 +161,7 @@ class MultiRiskScore(RiskScore):
 		"""Calculate the Multilocus part of a GRS.
 			gtdict => dict {str(snpid):GenoType};
 			Return => A risk score (float)"""
+		logger.debug(f"{gtdict}")
 		alleles = dict()
 		for gt in gtdict.values():
 			for allele in gt.alleles:
@@ -185,7 +183,6 @@ class MultiRiskScore(RiskScore):
 		else:
 			return nested_dict # Which should actually be the weight by now (a float)
 		return 0
-
 
 	@staticmethod
 	def ReadMultiRisk(risk_iter):
@@ -239,7 +236,15 @@ class sharp2019(MultiRiskScore):
 
 	def calc(self, gtdict, **kwargs):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair."""
-		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, gtdict, **kwargs)
+		logger.debug(f"{gtdict}")
+		alleles = dict()
+		for gt in gtdict.values():
+			for allele in gt.alleles:
+				alleles[allele] = allele.dosage
+		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, alleles, **kwargs)
+
+#		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, gtdict, **kwargs)
+
 		if mrs := sum(self.nested_lookup(self.multi, gtdict.values())[:2]):
 			logger.debug(f"Sharp2019: Found multirisk weights = {mrs}")
 			wsum += mrs / self.N

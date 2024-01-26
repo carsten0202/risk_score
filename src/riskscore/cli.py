@@ -11,7 +11,6 @@ import sys
 
 assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
 
-import pklib.pkcsv as csv
 import pklib.pkclick as click
 import pksnp.pksnp as snps
 import pkrs.pkrs as riskscore
@@ -70,19 +69,10 @@ OPTION = namedtuple('Options', ['geno','info','log','n','pgs','vcf','weights','m
 	log  = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
 	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation. Default: Number of lines in weights file ignoring the header.""",
 	pgs  = """Risk score file obtained from the PGSCatalog. See: https://www.pgscatalog.org/.""",
-	vcf  = """
-Load VCF File using PyVCF VCFv4.0 and 4.1 parser for Python. Note that this option requires reading the entire VCF into
-memory, which is not recommended for large VCF files. Use 'bcftools view --regions' or similar, to first reduce large
-files in size.
-""",
+	vcf  = """Use VCF File as input.""",
 	weights = """Single locus risk weights file. See format description below on 'Column-Based Datafiles'.\n""",
 	multiweights = """Multi-locus risk weights file. See format description below on 'Column-Based Datafiles'.\n"""
 )
-
-# Notes and TODOs:
-
-# TODO: When reading from VCF we should include an option for selecting the field you want; eg GT or DS, etc.
-# TODO: The filtering isn't complete in pkcsv. I only filter '#' at the beginning, but we should do it in the whole file.
 
 # --%%  END: Perform Basic Setup  %%--
 #
@@ -161,7 +151,10 @@ https://doi.org/10.2337/dc15-1111
 """
 	grs = riskscore.oram2016(risks=weights, multirisks=multilocus)
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
+#		logging.debug(f"oram2016: Filtering using these ids: {grs.risks_rsids}")
+#		There's something rotten here. the risks_rsids doesn't return the mulitrisk snps. 
+#		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
+		subject_iter = snps.read_pysam(vcf)
 	else:
 		subject_iter = snps.read_genotypes(geno, info)
 	for subject_id, genotypes in subject_iter:
@@ -196,10 +189,12 @@ JM Locke, JT, MN Weedon, WA Hagopian, RA Oram.
 Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
-	sys.exit("SORRY! The sharp2019 calculation is currently broken. I'll try to fix it in the next release.")
 	grs = riskscore.sharp2019(risks=weights, multirisks=multilocus)
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
+#		logging.debug(f"sharp2019: Filtering using these ids: {grs.risks_rsids}")
+#		There's something rotten here. the risks_rsids doesn't return the mulitrisk snps. 
+#		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
+		subject_iter = snps.read_pysam(vcf)
 	else:
 		subject_iter = snps.read_genotypes(geno, info)
 	for subject_id, genotypes in subject_iter:
@@ -232,7 +227,7 @@ THIS COMMAND IS NOT WELL TESTED YET. USE WITH CAUTION."""
 @click.option('-w','--weights', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.txt", help=OPTION.weights, show_default=True)
 def test(vcf, weights, multilocus):
 	"""FOR TESTING PURPOSES ONLY; DO NOT USE!"""
-	logger.warning(f"FOR TESTING PURPOSES ONLY; DO NOT USE!")
+	logging.warning(f"FOR TESTING PURPOSES ONLY; DO NOT USE!")
 	grs = riskscore.RiskScore(risks=weights)
 	snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
 	for subjectid, rs in grs.calc_by_snp(snpiter).items():
