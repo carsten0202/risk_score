@@ -177,7 +177,8 @@ class SNPiterator(object):
 		for count, record in enumerate(variter):
 			if not count % 5000 and count:
 				logger.info(f"SNPiterator: Reading variant data. {count} variants read.")
-			yield converter(record)
+			if record.alts is not None:
+				yield converter(record)
 
 	@classmethod
 	def FromPySAM(cls, variter, filterids=None, contig=[None], start=[None], end=None, **kwargs):
@@ -205,8 +206,11 @@ class Allele(Locus):
 	def __init__(self, *args, allele="", dosage=1, force_id=False, **kwargs):
 		super().__init__(*args, data={'allele':str(allele)}, **kwargs)
 		self["dosage"] = float(dosage) # The allelic dosage; ie probability that the allele is present. Default: 1
-		if self["ID"] in ['.','']: # Because "false" ids cannot make us hashable.
+
+		# We need ids that are hashable and posids must match the position, so we redo them
+		if self["ID"] in ['.',''] or re.search("[0-9]+:[0-9]+", self["ID"]) : 
 			self["ID"] = self.posid
+		
 		assert self["allele"], "Allele must be a valid string of length > 0. For Deletions: Custom is to use the base just prior to the deletion."
 		assert self["ID"], "Allele must have a valid ID of length > 0 that is hashable together with the allele."
 		self.__hashkey = hash((self.ID, self.allele)) if (force_id or self.posid is None) else hash((self.posid, self.allele))

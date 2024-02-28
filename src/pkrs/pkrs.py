@@ -203,7 +203,7 @@ class MultiRiskScore(RiskScore):
 
 		nested_dict = dict()
 		for risk in risk_iter:
-			logging.debug(f"ReadMultiRisk: Reading {risk}")
+			logger.debug(f"ReadMultiRisk: Reading {risk}")
 			if risk.get("GENOTYPE_1"):
 				nested_dict = nested_read(risk, nested_dict)
 		return nested_dict
@@ -236,16 +236,23 @@ class sharp2019(MultiRiskScore):
 
 	def calc(self, gtdict, **kwargs):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair."""
-		logger.debug(f"{gtdict}")
+		logger.debug(f"Sharp2019: Subject genotypes = {gtdict}")
+		
+		# Calculate the aggregate part
 		alleles = dict()
 		for gt in gtdict.values():
 			for allele in gt.alleles:
 				alleles[allele] = allele.dosage
 		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, alleles, **kwargs)
 
-#		wsum = super(MultiRiskScore,MultiRiskScore).calc(self, gtdict, **kwargs)
+		# Only scan alleles which are present (dosage > 0.5)
+		# Hack to fix some earlier problem with reading in data
+		k = [k for k,v in alleles.items() if v > 0.5]
+		subject = [allele for allele in k if allele.allele == 'P']
+		logger.debug(f"Sharp2019: Scanning {len(subject)} types {subject}")
 
-		if mrs := sum(self.nested_lookup(self.multi, gtdict.values())[:2]):
+		# Calculate the multi-part
+		if mrs := sum(self.nested_lookup(self.multi, subject)):
 			logger.debug(f"Sharp2019: Found multirisk weights = {mrs}")
 			wsum += mrs / self.N
 		logger.debug(f"Sharp2019: Total score = {wsum}")
@@ -253,14 +260,16 @@ class sharp2019(MultiRiskScore):
 
 	@staticmethod
 	def nested_lookup(nested_dict, subject):
-		if wsum := super(sharp2019,sharp2019).nested_lookup(nested_dict, subject):
-			return [wsum]
+		"""Search the tree by looking for keys in the nested_dict
+		nested_dict: 
+		subject:     
+		"""
+#		if wsum := super(sharp2019,sharp2019).nested_lookup(nested_dict, subject):
+#			return [wsum]
 		wsum = []
-		import itertools
-		subject_alleles = list(itertools.chain(*[gt.alleles for gt in subject]))
 		if isinstance(nested_dict, dict):
 			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
-				if haplo in subject_alleles:
+				if haplo in subject:
 					logger.debug(f"Sharp2019: Found allele '{haplo}' pointing to '{nested_dict[haplo]}'.")
 					wsum.extend(sharp2019.nested_lookup(nested_dict[haplo], subject)) # Move down in nested structure.
 		else:
