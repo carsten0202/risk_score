@@ -151,7 +151,7 @@ https://doi.org/10.2337/dc15-1111
 """
 	grs = riskscore.oram2016(risks=weights, multirisks=multilocus)
 	if isinstance(check_args(geno, info, vcf), type(vcf)):
-#		logging.debug(f"oram2016: Filtering using these ids: {grs.risks_rsids}")
+		logging.debug(f"oram2016: Filtering using these ids: {grs.risks_rsids}")
 #		There's something rotten here. the risks_rsids doesn't return the mulitrisk snps. 
 #		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
 		subject_iter = snps.read_pysam(vcf)

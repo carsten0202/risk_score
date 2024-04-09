@@ -161,28 +161,36 @@ class MultiRiskScore(RiskScore):
 		"""Calculate the Multilocus part of a GRS.
 			gtdict => dict {str(snpid):GenoType};
 			Return => A risk score (float)"""
-		logger.debug(f"{gtdict}")
+		logger.debug(f"MultiRiskScore: Subject = {gtdict}")
 		alleles = dict()
 		for gt in gtdict.values():
 			for allele in gt.alleles:
 				alleles[allele] = allele.dosage
 		wsum = super().calc(alleles, **kwargs)
 		if mrs := self.nested_lookup(self.multi, gtdict.values()):
-			logger.debug(f"Calc MultiRiskScore: found weight = {mrs}")
+			logger.debug(f"MultiRiskScore: Found multirisk weight = {mrs}")
 			wsum += mrs / self.N
 		logger.debug(f"MultiRiskScore: Total score = {wsum}")
 		return wsum
 
 	@staticmethod
 	def nested_lookup(nested_dict, subject): 
+		"""Search the tree by looking for keys in the nested_dict
+		nested_dict: 
+		subject:     
+		"""
+		wsum = []
 		if isinstance(nested_dict, dict):
 			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
 				if haplo in subject:
 					logger.debug(f"MultiRiskScore: Found allele '{haplo}' pointing to '{nested_dict[haplo]}'.")
-					return MultiRiskScore.nested_lookup(nested_dict[haplo], [gt for gt in subject if gt != haplo]) # Move down in nested structure. Exclude haplo from subject so it isn't counted again.
+#					return MultiRiskScore.nested_lookup(nested_dict[haplo], [gt for gt in subject if gt != haplo]) # Move down in nested structure. Exclude haplo from subject so it isn't counted again.
+#					return MultiRiskScore.nested_lookup(nested_dict[haplo], subject) # Move down in nested structure.
+					wsum.extend(sharp2019.nested_lookup(nested_dict[haplo], subject)) # Move down in nested structure.
 		else:
-			return nested_dict # Which should actually be the weight by now (a float)
-		return 0
+			logger.debug(f"MultiRiskScore: Score Found = {nested_dict}")
+			return [nested_dict] # Which should actually be the weight by now (a float)
+		return wsum
 
 	@staticmethod
 	def ReadMultiRisk(risk_iter):
@@ -256,24 +264,6 @@ class sharp2019(MultiRiskScore):
 			logger.debug(f"Sharp2019: Found multirisk weights = {mrs}")
 			wsum += mrs / self.N
 		logger.debug(f"Sharp2019: Total score = {wsum}")
-		return wsum
-
-	@staticmethod
-	def nested_lookup(nested_dict, subject):
-		"""Search the tree by looking for keys in the nested_dict
-		nested_dict: 
-		subject:     
-		"""
-#		if wsum := super(sharp2019,sharp2019).nested_lookup(nested_dict, subject):
-#			return [wsum]
-		wsum = []
-		if isinstance(nested_dict, dict):
-			for haplo in nested_dict: # Pulling from nested ensures that the returned matching weight is the highest ranked (by fileorder); Also fast, only looping over existing keys.
-				if haplo in subject:
-					logger.debug(f"Sharp2019: Found allele '{haplo}' pointing to '{nested_dict[haplo]}'.")
-					wsum.extend(sharp2019.nested_lookup(nested_dict[haplo], subject)) # Move down in nested structure.
-		else:
-			return [nested_dict] # Which should actually be the weight by now (a float)
 		return wsum
 
 	@staticmethod
