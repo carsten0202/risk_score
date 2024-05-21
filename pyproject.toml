@@ -23,10 +23,10 @@ dependencies = [
     "isal>1.1.0",
     "pysam>0.20.0",
 ]
- dynamic = ["version"]
+dynamic = ["version"]
 
 [project.scripts]
     riskscore = "riskscore:Riskscore"
 
 [tool.setuptools.dynamic]
-version = {attr = "riskscore.version.__version__ "}
+version = {attr = "riskscore.version.__version__"}

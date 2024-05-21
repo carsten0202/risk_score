@@ -1,6 +1,5 @@
 
 __version__ = """1.6.2"""
-
 # v1.5.0: Fixed Sharp2019. Kinda. Its still wonky, and has trouble matching the alleles properly. But it works with some hand-holding.
 # v1.6.0: Fixed even more bugs. Sharp is a little less wonky. Still has trouble matching the alleles.
 # v1.6.1: Bugfix
