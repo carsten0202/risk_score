@@ -120,7 +120,7 @@ def aggregate(denominator, pgs, vcf):
 	calc_and_report(rs, vcf)
 
 
-oram2016_weights_default = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', 'None')
+oram2016_weights_default = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', None)
 @main.command(cls=StdCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, default=58, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_ORAM2016_WEIGHTS', default=oram2016_weights_default, required=True, help=OPTION.weights, show_default=True)
