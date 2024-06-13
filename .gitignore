@@ -1,5 +1,0 @@
-.gitignore
-**/logs
-*.log
-**/__pycache__
-*.swp

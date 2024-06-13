@@ -9,33 +9,28 @@ import logging
 import os
 import sys
 
-assert sys.version_info >= (3, 8), f"{sys.argv[0]} requires Python 3.8.0 or newer. Your version appears to be: '{sys.version}'."
-
 import pklib.pkclick as click
-import pksnp.pksnp as snps
-import pkrs.pkrs as riskscore
 from riskscore.version import __version__
 
 EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
 fileformat = """
 
+VARIANT MATCHING:
+
+Variants are matched based on rsIDs and nucleotides. PGS files and vcf files must be formatted with rsIDs or proper
+matching of variants will not occur.
+
 COLUMN-BASED DATAFILES:
 
-Several options accept files containing data in tables/columns. Columns separators are auto-detected from the input and should work for tab-separated files, comma-seperated (csv) files, and space-separated files. 
-The file must have one and only one headline as columns are identified by name. Any column name not recognized is ignored.
+Accepted input is either a PGS accession, which is then downloaded from the catalog, or a tabular file formatted
+according to the PGS standard. Column separators are auto-detected from the input and should work for tab-separated
+files, comma-seperated (csv) files, and space-separated files. Columns with unrecognized names are ignored.
 
 \b
-Recognized names are:
-ALLELE    - Identification of the weighted allele. Usually given as a nucleotide.
-BETA      - The weight to be used. Used unmodified. Takes precedent over 'ODDSRATIO'.
-CHROM     - Chromosome name or number.
-ODDSRATIO - Ignored if column 'BETA' is given. Otherwise the natural logarithm of ODDSRATIO will be used as weights.
-POS       - Chromosomal Position.
-POSID     - An identifier of the type CHR:POS.
+https://www.pgscatalog.org/downloads/#dl_scoring_files
 
 """,
 legal = """
-Written by Carsten Friis Rundsten <fls530@ku.dk>
 
 LEGAL:
 
@@ -48,17 +43,22 @@ This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
+
+Written by Carsten Friis Rundsten <fls530@ku.dk>
 """,
 multiformat = """
-\b
-Recognized names in multi-locus weights files:
-ALLELE_#   - The weighted allele. Usually a nucleotide.
-BETA       - The weight to be used. Takes precedent over 'ODDSRATIO'.
-GENOTYPE_# - The weighted genotype. Usually given as nucleotide:nucleotide.
-ID_#       - Locus identifier. Must match identifiers given in the subject data.
-ODDSRATIO  - Ignored if column 'BETA' is given. Otherwise the natural logarithm of ODDSRATIO will be used as weights.
 
-Replace '#' with a number of 1 or higher to indicate each locus group in a multi-locus weight.
+INTERACTIONS:
+
+The PGS catalog file format is inconsistent when describing weighted interactions. Limited support is provided here if
+weights are appropriately formatted, which may require the user to modify the PGS file after download. Interactions are
+recognized by having rsIDs separated by commas, while multiple genotypes can be separated with ':' or ';'.
+
+Example of an interaction from Oram2016:
+
+\b
+rsID                  effect_allele   effect_weight
+rs2187668,rs7454108   C/T:T/C         3.87
 
 """,
 )
@@ -67,10 +67,10 @@ OPTION = namedtuple('Options', ['geno','info','log','n','pgs','vcf','weights','m
 	geno = """Geno file of the type created by SNPextractor.""",
 	info = """Info file of the type created by SNPextractor.""",
 	log  = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
-	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation. Default: Number of lines in weights file ignoring the header.""",
+	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation.""",
 	pgs  = """Risk score file obtained from the PGSCatalog. See: https://www.pgscatalog.org/.""",
-	vcf  = """Use VCF File as input.""",
-	weights = """Single locus risk weights file. See format description below on 'Column-Based Datafiles'.\n""",
+	vcf  = """Read sample genotypes from VCF File as input.""",
+	weights = """Risk score file, possibly obtained from the PGSCatalog. See description below on 'Column-Based Datafiles'.\n""",
 	multiweights = """Multi-locus risk weights file. See format description below on 'Column-Based Datafiles'.\n"""
 )
 
@@ -89,15 +89,19 @@ class StdCommand(click.Command):
 	def __init__(self, *args, epilog=None, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.params.insert(0, click.Option(('--vcf',), type=click.VCFFile(), help=OPTION.vcf))
-		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help=OPTION.info))
-		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help=OPTION.geno))
+#		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help=OPTION.info))
+#		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help=OPTION.geno))
 		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
 
 @click.group()
 @click.version_option(version=__version__)
+@click.option('--dbsnp', help="what dbsnp should we use?")
 @click.option('--log', default="warning", help=OPTION.log, show_default=True)
-def main(log):
+def main(dbsnp, log):
 	"""Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."""
+	# Clear existing loggers...
+	for handler in logging.root.handlers[:]:
+		logging.root.removeHandler(handler)
 	try:
 		log_num = getattr(logging, log.upper())
 	except AttributeError:
@@ -107,39 +111,21 @@ def main(log):
 
 @main.command(cls=StdCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, help=OPTION.n)
-@click.option('-w','--weights', type=click.CSVFile(), default=None, help=OPTION.weights)
-def aggregate(geno, info, denominator, vcf, weights):
+@click.option('-w','--pgs','--weights', type=click.PGSFile(), default=None, help=OPTION.weights)
+def aggregate(denominator, pgs, vcf):
 	"""Calculate Aggregated (linear) Risk Score from user-provided weights."""
-	assert weights, f"ERROR: You must specify a weights file."
-	grs = riskscore.RiskScore(risks=weights)
-	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
-		for subjectid, rs in grs.calc_by_snp(snpiter).items():
-			print(f"{subjectid}\t{round(rs,6)}")
-	else:
-		for subject_id, alleles in snps.read_alleles(geno, info):
-			print(f"{subject_id}\t{round(grs.calc(alleles),6)}")
+	assert pgs, f"ERROR: You must specify a weights file."
+	from pkrs import RiskScore
+	rs = RiskScore.FromPGS(pgs, N=denominator)
+	calc_and_report(rs, vcf)
 
 
-oram2016_multilocus_default = os.environ.get('RISKSCORE_ORAM2016_MULTILOCUS', 'None'),
-oram2016_weights_default    = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', 'None'),
+oram2016_weights_default = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', 'None')
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m','--multilocus',
-			  type=click.CSVFile(),
-			  envvar='RISKSCORE_ORAM2016_MULTILOCUS',
-			  default=oram2016_multilocus_default,
-			  show_default=True, 
-			  help=OPTION.multiweights)
-@click.option('-w','--weights',
-			  type=click.CSVFile(),
-			  envvar='RISKSCORE_ORAM2016_WEIGHTS',
-			  default=oram2016_weights_default,
-			  show_default=True,
-			  help=OPTION.weights)
-def oram2016(geno, info, vcf, weights, multilocus):
+@click.option('-n','--denominator', type=click.FLOAT, default=58, show_default=True, help=OPTION.n)
+@click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_ORAM2016_WEIGHTS', default=oram2016_weights_default, required=True, help=OPTION.weights, show_default=True)
+def oram2016(denominator, pgs, vcf):
 	"""Calculate Gene Risk Score based on Oram et al 2016.
-
-REFERENCE:
 
 \b
 A type 1 diabetes genetic risk score can aid discrimination between type 1 and
@@ -149,37 +135,17 @@ MN Weedon.
 Diabetes care 39 (3), 337-344.
 https://doi.org/10.2337/dc15-1111
 """
-	grs = riskscore.oram2016(risks=weights, multirisks=multilocus)
-	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		logging.debug(f"oram2016: Filtering using these ids: {grs.risks_rsids}")
-#		There's something rotten here. the risks_rsids doesn't return the mulitrisk snps. 
-#		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
-		subject_iter = snps.read_pysam(vcf)
-	else:
-		subject_iter = snps.read_genotypes(geno, info)
-	for subject_id, genotypes in subject_iter:
-		print(f"{subject_id}\t{round(grs.calc(genotypes),6)}")
+	from pkrs import Interaction as Oram2016
+	rs = Oram2016.FromPGS(pgs, N=denominator, interaction_func=max)
+	calc_and_report(rs, vcf)
 
 
-sharp2019_multilocus_default = os.environ.get('RISKSCORE_SHARP2019_MULTILOCUS', 'None'),
-sharp2019_weights_default    = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', 'None'),
+sharp2019_weights_default = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', None)
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-m', '--multilocus',
-			  type=click.CSVFile(),
-			  envvar='RISKSCORE_SHARP2019_MULTILOCUS',
-			  default=sharp2019_multilocus_default,
-			  show_default=True,
-			  help=OPTION.multiweights)
-@click.option('-w', "--weights",
-			  type=click.CSVFile(),
-			  envvar='RISKSCORE_SHARP2019_WEIGHTS',
-			  default=sharp2019_weights_default,
-			  show_default=True,
-			  help=OPTION.weights)
-def sharp2019(geno, info, vcf, weights, multilocus):
+@click.option('-n','--denominator', type=click.FLOAT, default=1, show_default=True, help=OPTION.n)
+@click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_SHARP2019_WEIGHTS', default=sharp2019_weights_default, required=True, help=OPTION.weights, show_default=True)
+def sharp2019(denominator, pgs, vcf):
 	"""Calculate Gene Risk Score based on Sharp et al 2019.
-
-REFERENCE:
 
 \b
 Development and standardization of an improved type 1 diabetes genetic risk
@@ -189,49 +155,37 @@ JM Locke, JT, MN Weedon, WA Hagopian, RA Oram.
 Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
-	grs = riskscore.sharp2019(risks=weights, multirisks=multilocus)
-	if isinstance(check_args(geno, info, vcf), type(vcf)):
-#		logging.debug(f"sharp2019: Filtering using these ids: {grs.risks_rsids}")
-#		There's something rotten here. the risks_rsids doesn't return the mulitrisk snps. 
-#		subject_iter = snps.read_pysam(vcf, filterids=grs.risks_rsids)
-		subject_iter = snps.read_pysam(vcf)
-	else:
-		subject_iter = snps.read_genotypes(geno, info)
-	for subject_id, genotypes in subject_iter:
-		print(f"{subject_id}\t{round(grs.calc(genotypes),6)}")
-
-
-@main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-p', '--pgs', type=click.CSVFile(), help=OPTION.pgs)
-def pgscatalog(geno, info, vcf, pgs):
-	"""Calculate Risk Score based on data from the PGS Catalog.
-
-Warning: This script is slow and memory inefficient if you load in large data
-sets. Take care if your PGS score involves more than 10.000 SNPs.
-
-THIS COMMAND IS NOT WELL TESTED YET. USE WITH CAUTION."""
-	assert pgs, f"ERROR: You must specify a pgs catalogue file."
-	grs = riskscore.PGSCatalog(pgs=pgs)
-	if isinstance(check_args(geno, info, vcf), type(vcf)):
-		snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
-		for subjectid, rs in grs.calc_by_snp(snpiter).items():
-			print(f"{subjectid}\t{round(rs,6)}")
-	else:
-		for subject_id, alleles in snps.read_alleles(geno, info):
-			print(f"{subject_id}\t{round(grs.calc(alleles),6)}")
+	from pkrs import Sharp2019
+	rs = Sharp2019.FromPGS(pgs, N=denominator)
+	calc_and_report(rs, vcf)
 
 
 @main.command(no_args_is_help=True, hidden=True)
-@click.option('-m','--multilocus', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.multilocus.txt", help=OPTION.multiweights, show_default=True)
-@click.option('--vcf', type=click.VCFFile(), default="/emc/cbmr/users/fls530/grs_t1d_translate/test.vcf.gz", help=OPTION.vcf)
-@click.option('-w','--weights', type=click.CSVFile(), default=f"/home/fls530/python/risk_score/test-data/oram2016.weights.txt", help=OPTION.weights, show_default=True)
-def test(vcf, weights, multilocus):
+@click.option('--vcf', type=click.File(), default="/home/fls530/dev/testdata/oram_sharp.sorted.vcf.gz", help=OPTION.vcf)
+@click.option('-w', '--weights', '--pgs', type=str, default="/home/fls530/dev/riskscore/weights/oram2016.txt.gz", help=OPTION.weights, show_default=True)
+def test(vcf, weights):
 	"""FOR TESTING PURPOSES ONLY; DO NOT USE!"""
-	logging.warning(f"FOR TESTING PURPOSES ONLY; DO NOT USE!")
-	grs = riskscore.RiskScore(risks=weights)
-	snpiter = snps.SNPiterator.FromPySAM(vcf, filterids=grs.risks_rsids)
-	for subjectid, rs in grs.calc_by_snp(snpiter).items():
-		print(f"{subjectid}\t{rs}")
+	logging.warning(f"FOR DEVELOPMENTAL TESTING PURPOSES ONLY; DO NOT USE!")
+
+	from pkrs import Interaction
+	from pksnp import PopulationAlleles
+
+	import pgscatalog.core
+	pgs = pgscatalog.core.ScoringFile(weights)
+	try:
+		pgs.download(".") # type: ignore
+	except FileExistsError:
+		logging.debug(f": File exists - Download aborted")
+
+	grs = Interaction.FromPGS(pgs)
+	population = PopulationAlleles(vcf)
+
+	for sample, alleles in population.items():
+		logging.info(f" Processing sample={sample}")
+		logging.debug(f" ...with alleles={alleles}")
+		score = grs.calc(alleles)
+		logging.debug(f"{sample}\t{score}")
+		print(f"{sample}\t{score}")
 
 # --%%  END: Define Commands  %%--
 #
@@ -249,6 +203,19 @@ def check_args(geno=None, info=None, vcf=None, *args):
 	if bool(vcf) ^ bool(geno and info):
 		return vcf or geno
 	sys.exit("ERROR: No correct input files specified, use EITHER '--vcf' OR BOTH '--geno' and '--info' options. Use '--help' for help.")
+
+def calc_and_report(rs, vcf):
+	"""The standardised part of calculating"""
+	from pksnp import PopulationAlleles
+	population = PopulationAlleles(vcf, filter_ids=rs.rsids)
+	for sample, alleles in population.items():
+		logging.info(f" Processing sample={sample}")
+		logging.debug(f" ...with alleles={alleles}")
+		score = rs.calc(alleles)
+		logging.debug(f" {sample}\t{score}")
+		print(f"{sample}\t{score}")
+
+
 
 # --%%  END: Subroutines  %%--
 #
