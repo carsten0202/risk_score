@@ -14,8 +14,8 @@ class Sharp2019(Interaction):
 	
 	haplotype : Haplotype data from Table S1 in Sharp2019 et al. To be used *only* when no interaction is present (int_score=0).
 	"""
-	def __init__(self, *args, haplotype={}, N=1, **kwargs):
-		super().__init__(*args, N=N, **kwargs)
+	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, **kwargs):
+		super().__init__(*args, N=N, interaction_func=interaction_func, **kwargs)
 		self.haplotype = {key: float(value) for key, value in haplotype.items()}
 
 	def calc(self, sample_data):

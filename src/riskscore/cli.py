@@ -156,7 +156,7 @@ Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
 	from pkrs import Sharp2019
-	rs = Sharp2019.FromPGS(pgs, N=denominator)
+	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=max)
 	calc_and_report(rs, vcf)
 
 
@@ -184,7 +184,7 @@ def test(vcf, weights):
 		logging.info(f" Processing sample={sample}")
 		logging.debug(f" ...with alleles={alleles}")
 		score = grs.calc(alleles)
-		logging.debug(f"{sample}\t{score}")
+		logging.debug(f" Sample = {sample}; Total Score = {score}")
 		print(f"{sample}\t{score}")
 
 # --%%  END: Define Commands  %%--
@@ -212,7 +212,7 @@ def calc_and_report(rs, vcf):
 		logging.info(f" Processing sample={sample}")
 		logging.debug(f" ...with alleles={alleles}")
 		score = rs.calc(alleles)
-		logging.debug(f" {sample}\t{score}")
+		logging.debug(f" Sample = {sample}; Total Score = {score}")
 		print(f"{sample}\t{score}")
 
 
