@@ -82,10 +82,10 @@ class RiskScore:
 		for variant in pgs.variants:
 			try:
 				# Should prob subclass or patch the pgs-thingy and access e.g. variant.is_haplotype or variant.is_interaction...
-				if not cls.pat_variant.fullmatch(str(variant.effect_allele)): # Currently a dirty hack: should be eg: 'if variant.is_interaction or variant.is_diplotype:
+				if str(variant.effect_allele) in getattr(cls, 'complex_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_interaction or variant.is_diplotype:
 					# Load line as interaction...
 					cls.register_interaction(variant, interaction)
-				elif re.match("hap_", variant.rsID): # Currently a dirty hack: should be eg: 'if variant.is_haplotype:' 
+				elif str(variant.effect_allele) in getattr(cls, 'haplotype_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_haplotype:' 
 					# Load line as haplotype...
 					cls.register_haplotype(variant, haplotype, pgs.genome_build)
 				else:

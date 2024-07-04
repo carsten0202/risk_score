@@ -17,6 +17,8 @@ class Interaction(RiskScore):
 	interaction: dict-o-dicts with weights as leafs
 	interaction_func (func): function to handle when several weights are found in the tree
 	"""
+	complex_alleles = {}
+
 	def __init__(self, interaction=dict(), interaction_func=sum, *args, **kwargs):
 		"""Forward some arguments to super-class
 		interaction: A dict-o-dicts suitable for self.interaction
@@ -71,7 +73,8 @@ class Interaction(RiskScore):
 		branches = []
 
 		rsids = cls.pat_rsid.findall(str(variant.rsID))
-		genotypes =cls.pat_genotype.split(str(variant.effect_allele))
+		effect_allele = cls.complex_alleles.get(str(variant.effect_allele), str(variant.effect_allele))
+		genotypes = cls.pat_genotype.split(effect_allele)
 		for rsid,genotype in zip(rsids, genotypes):
 			try:
 				branches.append(Genotype(rsid=rsid, genotype=genotype))

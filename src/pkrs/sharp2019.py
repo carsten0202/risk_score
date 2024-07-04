@@ -12,8 +12,49 @@ class Sharp2019(Interaction):
 	"""
 	Calculate GRS based on Sharp et al 2019
 	
-	haplotype : Haplotype data from Table S1 in Sharp2019 et al. To be used *only* when no interaction is present (int_score=0).
+	haplotype: Haplotype data from Table S1 in Sharp2019 et al. To be used *only* when no interaction is present (int_score=0).
 	"""
+	
+	# Dictionary to translate Sharps haplotypes (Interaction)
+	complex_alleles = {
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*03:0X;HLA-DQB1*03:02": "C:G",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01_x_HLA-DQA1*01:0X;HLA-DQB1*05:01": "T:A",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:02_x_HLA-DQA1*03:0X;HLA-DQB1*03:02": "G/G:G/G", 
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01_x_HLA-DQA1*03:0X;HLA-DQB1*03:02": "T:G",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*03:0X;HLA-DQB1*03:01": "C:T",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01_x_HLA-DQA1*02:01;HLA-DQB1*02:02": "T:T",
+		"HLA-DQA1*04:01;HLA-DQB1*04:02_x_HLA-DQA1*02:01;HLA-DQB1*02:02": "T:T",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*01:0X;HLA-DQB1*05:01": "C:A",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*02:01;HLA-DQB1*02:02": "C:T",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*05:01;HLA-DQB1*02:01": "C/C:C/C",
+		"HLA-DQA1*01:02;HLA-DQB1*06:02_x_HLA-DQA1*01:02;HLA-DQB1*06:02": "T/T:T/T",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*05:05;HLA-DQB1*03:01": "C:C",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*01:03;HLA-DQB1*06:03": "C:T",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:02_x_HLA-DQA1*01:03;HLA-DQB1*06:03": "G:T",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01_x_HLA-DQA1*03:0X;HLA-DQB1*03:01": "T/T:T/T",
+		"HLA-DQA1*03:02;HLA-DQB1*03:03_x_HLA-DQA1*03:0X;HLA-DQB1*03:02": "A:G",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01_x_HLA-DQA1*05:05;HLA-DQB1*03:01": "T:C",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01_x_HLA-DQA1*01:02;HLA-DQB1*06:02": "C:T",
+	}
+
+	# Dictionary to translate Sharps haplotypes (No interaction)
+	haplotype_alleles = {
+		"HLA-DQA1*03:0X;HLA-DQB1*03:02": "G",
+		"HLA-DQA1*01:02;HLA-DQB1*06:02": "T",
+		"HLA-DQA1*05:01;HLA-DQB1*02:01": "C",
+		"HLA-DQA1*02:01;HLA-DQB1*02:02": "T",
+		"HLA-DQA1*05:05;HLA-DQB1*03:01": "C",
+		"HLA-DQA1*01:0X;HLA-DQB1*05:01": "A",
+		"HLA-DQA1*03:0X;HLA-DQB1*03:01": "T",
+		"HLA-DQA1*01:03;HLA-DQB1*06:03": "T",
+		"HLA-DQA1*02:01;HLA-DQB1*03:03": "G",
+		"HLA-DQA1*04:01;HLA-DQB1*04:02": "T",
+		"HLA-DQA1*01:0X;HLA-DQB1*05:03": "G",
+		"HLA-DQA1*03:02;HLA-DQB1*03:03": "A",
+		"HLA-DQA1*01:02;HLA-DQB1*06:09": "A",
+		"HLA-DQA1*01:03;HLA-DQB1*06:01": "A",
+	}
+
 	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, **kwargs):
 		super().__init__(*args, N=N, interaction_func=interaction_func, **kwargs)
 		self.haplotype = {key: float(value) for key, value in haplotype.items()}
@@ -45,9 +86,5 @@ class Sharp2019(Interaction):
 		haplotype (dict): The dict we're building
 		"""
 		from pksnp import Allele
-
-		# TODO: This is a hack, and should be removed if we ever get the 'is_interaction' 'is_haplotype' stuff going.
-		import re
-		rsid = re.search("rs[0-9]+", variant.rsID)[0]
-
-		haplotype[Allele(chromosome=variant.chr_name, position=variant.chr_position, rsid=rsid, allele=variant.effect_allele, build=build)] = float(variant.effect_weight)
+		effect_allele = cls.haplotype_alleles.get(str(variant.effect_allele), str(variant.effect_allele))
+		haplotype[Allele(chromosome=variant.chr_name, position=variant.chr_position, rsid=variant.rsID, allele=effect_allele, build=build)] = float(variant.effect_weight)

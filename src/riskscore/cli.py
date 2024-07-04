@@ -135,7 +135,7 @@ MN Weedon.
 Diabetes care 39 (3), 337-344.
 https://doi.org/10.2337/dc15-1111
 """
-	from pkrs import Interaction as Oram2016
+	from pkrs import Oram2016
 	rs = Oram2016.FromPGS(pgs, N=denominator, interaction_func=max)
 	calc_and_report(rs, vcf)
 
