@@ -39,7 +39,7 @@ class Genotype:
 		return NotImplemented
 
 	def __hash__(self):
-		return hash(self.alleles)
+		return hash(self.genotype)
 	
 	def __repr__(self):
 		return f"Genotype({self.rsid}, {'/'.join(self.genotype)})"

@@ -35,13 +35,13 @@ class Interaction(RiskScore):
 
 	def calc_interaction(self, sample_data):
 		"""Calculate the interaction part of the score."""
-		logger.debug(f"calc_interaction: Scanning alleles={self.interaction}")
+		logger.debug(f"calc_interaction: Sample={sample_data.sample}, Scanning alleles={self.interaction}")
 		try:
 			int_score = self.interaction_func(self.traverse_interactions(sample_data))
-			logger.info(f"calc_interaction: Interaction Sum = {int_score}")
+			logger.info(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = {int_score}")
 			return int_score / self.N
 		except ValueError:
-			logger.info(f"calc_interaction: Interaction Sum = 0")
+			logger.info(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = 0")
 			return 0
 
 	def traverse_interactions(self, sample_alleles):
@@ -53,9 +53,10 @@ class Interaction(RiskScore):
 					score.append(child)
 				elif key in sample_alleles:
 					logger.debug(f"traverse: Found {key}")
-					return recursive_traverse(child, score)
+					score = recursive_traverse(child, score)
 			return score
 
+		logger.debug(f" Top Level={list(self.interaction.keys())}")
 		return recursive_traverse(self.interaction)
 
 	@classmethod
