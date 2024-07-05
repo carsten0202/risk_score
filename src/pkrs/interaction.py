@@ -56,10 +56,10 @@ class Interaction(RiskScore):
 		logger.debug(f"calc_interaction: Sample={sample_data.sample}, Scanning alleles={self.interaction}")
 		try:
 			int_score = self.interaction_func(self.traverse_interactions(sample_data))
-			logger.info(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = {int_score}")
+			logger.debug(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = {int_score}")
 			return int_score / self.N
 		except ValueError:
-			logger.info(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = 0")
+			logger.debug(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = 0")
 			return 0
 
 	def traverse_interactions(self, sample_alleles):

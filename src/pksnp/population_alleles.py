@@ -37,9 +37,10 @@ class PopulationAlleles(MutableMapping):
 		self.build = build
 		self.samples = variantfile.header.samples
 		self.update({sample: defaultdict(list) for sample in self.samples})
+
+		# Read varaints
 		for record in variantfile:
-			# rsid = translate_position_to_rsid(record.chrom, record.pos)
-			# Auch!!! translate may get the wrong ID if there's overlapping features...
+			# if we add rsid translation, then we likely add it here...
 			if filter_ids and record.id not in filter_ids:
 				continue
 			self.variants.append(record.id)
@@ -49,6 +50,8 @@ class PopulationAlleles(MutableMapping):
 				assert len(genotype)==2, f"Sample {sample} is not biallelic!"
 				for allele in genotype:
 					self._store[sample][Allele(chromosome=record.chrom, position=record.pos, rsid=record.id, allele=allele)].append(1)
+
+		# Validate variants
 		logger.info(f" Read {len(self.variants)} variants from file '{variantfile.filename}")
 		logger.debug(f" rsIDs found in input VCF = {self.variants}")
 		overlap = [rsid in self.variants for rsid in filter_ids]
@@ -61,6 +64,8 @@ class PopulationAlleles(MutableMapping):
 				logger.error(f" Check that your data files are the correct ones and that all contain rsIDs. rsIDs are necessary to correctly map variants.")
 				import sys
 				sys.exit("Exiting due to errors...")
+		else:
+			logger.info(f" All {len(filter_ids)} requested variants found in input data - Rejoice!")
 
 	def __delitem__(self, key):
 		del self._store[key]

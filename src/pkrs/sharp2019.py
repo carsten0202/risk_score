@@ -81,7 +81,7 @@ class Sharp2019(Interaction):
 			if allele in self.haplotype:
 				hap_score += self.haplotype.get(allele, 0) * sum(genotypes)
 				logger.debug(f"calc_haplotype: {allele} found. Current Sum = {hap_score}")
-		logger.info(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
+		logger.debug(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
 		return hap_score / self.N
 
 	@classmethod

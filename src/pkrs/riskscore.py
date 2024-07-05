@@ -57,7 +57,7 @@ class RiskScore:
 			if allele in self.weights:
 				prs_score += self.weights.get(allele, 0) * sum(genotypes)
 				logger.debug(f"calc: {allele} found. Current Sum = {prs_score}")
-		logger.info(f"calc: Sample={sample_data.sample}, Allelic Sum = {prs_score}")
+		logger.debug(f"calc: Sample={sample_data.sample}, Allelic Sum = {prs_score}")
 		return prs_score / self.N
 
 	@property
@@ -98,4 +98,6 @@ class RiskScore:
 				import sys
 				sys.exit("Exiting due to errors...")
 
-		return cls(haplotype=haplotype, interaction=interaction, weights=weights, *args, **kwargs)
+		rs = cls(haplotype=haplotype, interaction=interaction, weights=weights, *args, **kwargs)
+		logger.info(f"FromPGS: Read {len(rs.rsids)} weighted variants from {pgs.pgs_id}")
+		return rs
