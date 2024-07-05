@@ -59,6 +59,13 @@ class Sharp2019(Interaction):
 		super().__init__(*args, N=N, interaction_func=interaction_func, **kwargs)
 		self.haplotype = {key: float(value) for key, value in haplotype.items()}
 
+	@property
+	def rsids(self):
+		"""Return the ids of the weighted alleles"""
+		rsdict = super().rsids
+		rsdict.update({allele.rsid:None for allele in self.haplotype})
+		return rsdict
+
 	def calc(self, sample_data):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair (Table S1)."""
 		prs_score = super(Interaction, self).calc(sample_data=sample_data)
@@ -74,7 +81,7 @@ class Sharp2019(Interaction):
 			if allele in self.haplotype:
 				hap_score += self.haplotype.get(allele, 0) * sum(genotypes)
 				logger.debug(f"calc_haplotype: {allele} found. Current Sum = {hap_score}")
-		logger.info(f"calc_haplotype: Haplotype Sum = {hap_score}")
+		logger.info(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
 		return hap_score / self.N
 
 	@classmethod

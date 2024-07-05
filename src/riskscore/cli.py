@@ -91,7 +91,13 @@ class StdCommand(click.Command):
 		self.params.insert(0, click.Option(('--vcf',), type=click.VCFFile(), help=OPTION.vcf))
 #		self.params.insert(0, click.Option(('-i','--info',), type=click.File(), help=OPTION.info))
 #		self.params.insert(0, click.Option(('-g','--geno',), type=click.File(), help=OPTION.geno))
+		self.epilog = EPILOG.fileformat + EPILOG.legal
+
+class IntCommand(StdCommand):
+	def __init__(self, *args, epilog=None, **kwargs):
+		super().__init__(*args, **kwargs)
 		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
+
 
 @click.group()
 @click.version_option(version=__version__)
@@ -109,7 +115,7 @@ def main(dbsnp, log):
 	logging.basicConfig(level=log_num)
 
 
-@main.command(cls=StdCommand, no_args_is_help=True)
+@main.command(cls=IntCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, help=OPTION.n)
 @click.option('-w','--pgs','--weights', type=click.PGSFile(), default=None, help=OPTION.weights)
 def aggregate(denominator, pgs, vcf):
@@ -209,13 +215,10 @@ def calc_and_report(rs, vcf):
 	from pksnp import PopulationAlleles
 	population = PopulationAlleles(vcf, filter_ids=rs.rsids)
 	for sample, alleles in population.items():
-		logging.info(f" Processing sample={sample}")
-		logging.debug(f" ...with alleles={alleles}")
+		logging.debug(f" Processing sample={sample} with alleles={alleles}")
 		score = rs.calc(alleles)
 		logging.debug(f" Sample = {sample}; Total Score = {score}")
 		print(f"{sample}\t{score}")
-
-
 
 # --%%  END: Subroutines  %%--
 #

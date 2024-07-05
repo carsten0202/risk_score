@@ -33,20 +33,34 @@ class PopulationAlleles(MutableMapping):
 		filter_ids (iterable): Only return entries where 'id in filter_ids'
 		"""
 		self._store = dict()
-		self.build=build
+		self.variants = list()
+		self.build = build
 		self.samples = variantfile.header.samples
 		self.update({sample: defaultdict(list) for sample in self.samples})
 		for record in variantfile:
 			# rsid = translate_position_to_rsid(record.chrom, record.pos)
 			# Auch!!! translate may get the wrong ID if there's overlapping features...
 			if filter_ids and record.id not in filter_ids:
-				next
+				continue
+			self.variants.append(record.id)
 			for sample in self:
 				alleles = [record.ref] + list(record.alts)
 				genotype = [alleles[nuc] for nuc in record.samples[sample]['GT']]
 				assert len(genotype)==2, f"Sample {sample} is not biallelic!"
 				for allele in genotype:
 					self._store[sample][Allele(chromosome=record.chrom, position=record.pos, rsid=record.id, allele=allele)].append(1)
+		logger.info(f" Read {len(self.variants)} variants from file '{variantfile.filename}")
+		logger.debug(f" rsIDs found in input VCF = {self.variants}")
+		overlap = [rsid in self.variants for rsid in filter_ids]
+		if not all(overlap):
+			no_missing = len(filter_ids)-sum(overlap)
+			logger.warning(f" Of {len(filter_ids)} requested variants, {no_missing} were not found in input.")
+			logger.info(f" Missing {no_missing} variants={[rsid for bool,rsid in zip(overlap, filter_ids) if bool is False]}")
+			if no_missing > len(filter_ids) / 2:
+				logger.error(f" More than half of the requested variants are missing. Likely something is very wrong!!!")
+				logger.error(f" Check that your data files are the correct ones and that all contain rsIDs. rsIDs are necessary to correctly map variants.")
+				import sys
+				sys.exit("Exiting due to errors...")
 
 	def __delitem__(self, key):
 		del self._store[key]
@@ -86,6 +100,7 @@ def get_contig_names(vcf_file_path):
 def translate_position_to_rsid(chromosome, position, build='GRCh38'):
     # Open the dbSNP file, which should be indexed for fast access
 	# TODO: Right now this is hardlined in (and GRCh37...), but it shouldn't be...
+	# Auch!!! translate may get the wrong ID if there's overlapping features...
     dbsnp_file = '/projects/cbmr_shared/data/common_resources/dbsnp/b156/vcf/GCF_000001405.25.gz'
 
     dbsnp = VariantFile(dbsnp_file)

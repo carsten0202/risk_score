@@ -29,6 +29,22 @@ class Interaction(RiskScore):
 		self.interaction_func = interaction_func
 		logger.debug(f" Weighted Interaction = {self.interaction}")
 
+	@property
+	def rsids(self):
+		"""Return the ids of the weighted alleles"""
+		def recursive_keys(d):
+			keys=set()
+			for key, value in d.items():
+				if rsid := getattr(key, 'rsid', None):
+					keys.add(rsid)
+				if isinstance(value, dict):
+					keys.update(recursive_keys(value))
+			return keys
+
+		rsdict = super().rsids
+		rsdict.update({rsid:None for rsid in recursive_keys(self.interaction)})
+		return rsdict
+
 	def calc(self, sample_data):
 		"""Overload calc to handle interactions"""
 		prs_score = super().calc(sample_data=sample_data)
@@ -62,7 +78,7 @@ class Interaction(RiskScore):
 		return recursive_traverse(self.interaction)
 
 	@classmethod
-	def register_interaction(cls, variant, interaction):
+	def register_interaction(cls, variant, interaction, build=None):
 		"""Little helper-function for FromPGS to register the weights in the interaction tree.
 		
 		variant (class): A variant from PGS
@@ -77,9 +93,9 @@ class Interaction(RiskScore):
 		genotypes = cls.pat_genotype.split(effect_allele)
 		for rsid,genotype in zip(rsids, genotypes):
 			try:
-				branches.append(Genotype(rsid=rsid, genotype=genotype))
+				branches.append(Genotype(rsid=rsid, genotype=genotype, build=build))
 			except IndexError:
-				branches.append(Allele(rsid=rsid, allele=genotype))
+				branches.append(Allele(rsid=rsid, allele=genotype, build=build))
 
 		for branch in branches:
 			if branch not in current_level:
