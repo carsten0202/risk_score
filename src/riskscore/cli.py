@@ -52,9 +52,11 @@ INTERACTIONS:
 
 The PGS catalog file format is inconsistent when describing weighted interactions. Limited support is provided here if
 weights are appropriately formatted, which may require the user to modify the PGS file after download. Interactions are
-recognized by having rsIDs separated by commas, while multiple genotypes can be separated with ':' or ';'.
+recognized by having rsIDs separated by commas, while multiple genotypes can be separated with ':' or ';'. If the
+interactions are more complicated, then try contacting the author (<fls530@ku.dk>) as it may be possible to implement a
+specific command for the PGS. See the 'oram2016' and 'sharp2019' commands for examples of such.
 
-Example of an interaction from Oram2016:
+Example of how to encode an interaction (from Oram2016):
 
 \b
 rsID                  effect_allele   effect_weight

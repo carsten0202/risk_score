@@ -18,7 +18,7 @@ proc ModulesHelp { } {
 }
 
 proc ModulesDisplay { } {
-   puts stderr "\nRiskscore is a tool for calculating risk score from a small to moderate number of variants.\n"
+   puts stderr "\nRiskscore is a tool for calculating risk score from a number of variants.\nIt differs from most other PGS tools in that it has limited support for complex interactions.\n"
    puts stderr "\triskscore - Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."
 }
 

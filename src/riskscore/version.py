@@ -8,7 +8,6 @@ __version__ = """2.0.0"""
 # v2.0.0: We'll make v2 using pgscatalog tools, so, yes, it's v2. (Even if the tools works like shit...)
 
 # Notes and TODOs:
-# TODO: Should integrate the database code from snptool to speedup translation between rsid and pos
-#   TODO: The dbsnp thing is hardlined in right now... see 'sample_alleles'.
+# TODO: Could integrate the database code from snptool to speedup translation between rsid and pos
 # TODO: When reading from VCF we should include an option for selecting the field you want; eg GT or DS, etc.
-# TODO: Where should we put score files downloaded with pgscatalog tools?
+# TODO: Where should we put score files downloaded with pgscatalog tools? Currently they end in '.', which may be ok?
