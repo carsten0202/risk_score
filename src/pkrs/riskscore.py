@@ -82,18 +82,19 @@ class RiskScore:
 
 		for variant in pgs.variants:
 			build = getattr(pgs, 'genome_build', None)
+			allele = str(variant.effect_allele)
 			# Should prob subclass or patch the pgs-thingy and access e.g. variant.is_haplotype or variant.is_interaction...
-			if str(variant.effect_allele) in getattr(cls, 'complex_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_interaction or variant.is_diplotype:
+			if len(cls.pat_genotype.split(allele)) > 2 or allele in getattr(cls, 'complex_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_interaction or variant.is_diplotype:
 				# Load line as interaction...
 				cls.register_interaction(variant, interaction, build=build)
-			elif str(variant.effect_allele) in getattr(cls, 'haplotype_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_haplotype:' 
+			elif allele in getattr(cls, 'haplotype_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_haplotype:' 
 				# Load line as haplotype...
 				cls.register_haplotype(variant, haplotype, build=build)
-			elif cls.pat_variant.match(str(variant.effect_allele)):
+			elif cls.pat_variant.match(allele):
 				# Load line as regular variant...
-				weights[Allele(chromosome=variant.chr_name, position=variant.chr_position, rsid=variant.rsID, allele=variant.effect_allele, build=build)] = float(variant.effect_weight)
+				weights[Allele(chromosome=variant.chr_name, position=variant.chr_position, rsid=variant.rsID, allele=allele, build=build)] = float(variant.effect_weight)
 			else:
-				logger.error(f" {pgs.pgs_id} contains an effect allele ('{variant.effect_allele}') not supported by class {cls}")
+				logger.error(f" {pgs.pgs_id} contains an effect allele ('{allele}') not supported by class {cls}")
 				logger.error(f" You are likely invoking the script with the wrong command, or using the wrong PGS file?")
 				import sys
 				sys.exit("Exiting due to errors...")
