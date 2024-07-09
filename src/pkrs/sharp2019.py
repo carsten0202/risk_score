@@ -55,9 +55,10 @@ class Sharp2019(Interaction):
 		"HLA-DQA1*01:03;HLA-DQB1*06:01": "A",
 	}
 
-	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, **kwargs):
+	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, haplotype_func=lambda x: sum(sorted(x, reverse=True)[0:2]), **kwargs):
 		super().__init__(*args, N=N, interaction_func=interaction_func, **kwargs)
 		self.haplotype = {key: float(value) for key, value in haplotype.items()}
+		self.haplotype_func = haplotype_func
 
 	@property
 	def rsids(self):
@@ -75,12 +76,13 @@ class Sharp2019(Interaction):
 
 	def calc_haplotype(self, sample_data):
 		"""Calculate the haplotype component from Sharp2019 TableS1. Should only be done when *no* interaction is present. See Figure S2."""
-		hap_score = 0.0
+		hap_score = []
 		for allele, genotypes in sample_data.items():
 			# For simplicity, assume genotype is a tuple of alleles (e.g., (0, 1) or (1, 1))
 			if allele in self.haplotype:
-				hap_score += self.haplotype.get(allele, 0) * sum(genotypes)
-				logger.debug(f"calc_haplotype: {allele} found. Current Sum = {hap_score}")
+				hap_score.append(self.haplotype.get(allele, 0) * sum(genotypes))
+				logger.debug(f"calc_haplotype: {allele} found. Current scores = {hap_score}")
+		hap_score = self.haplotype_func(hap_score)
 		logger.debug(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
 		return hap_score / self.N
 

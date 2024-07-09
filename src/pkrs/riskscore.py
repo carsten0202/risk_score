@@ -17,7 +17,7 @@ class RiskScore:
 	weights (dict): Dict with <class Allele>:<float>
 	N (float): The scaling denominator
 	"""
-	pat_genotype = re.compile("[:;]+")
+	pat_genotype = re.compile("([GATC/]+)[:;]+([GATC/]+)")
 	pat_variant = re.compile("[GATC]+")
 	pat_rsid = re.compile("rs[\d]+")
 
@@ -84,7 +84,7 @@ class RiskScore:
 			build = getattr(pgs, 'genome_build', None)
 			allele = str(variant.effect_allele)
 			# Should prob subclass or patch the pgs-thingy and access e.g. variant.is_haplotype or variant.is_interaction...
-			if len(cls.pat_genotype.split(allele)) > 2 or allele in getattr(cls, 'complex_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_interaction or variant.is_diplotype:
+			if cls.pat_genotype.split(allele)[1:3] or allele in getattr(cls, 'complex_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_interaction or variant.is_diplotype:
 				# Load line as interaction...
 				cls.register_interaction(variant, interaction, build=build)
 			elif allele in getattr(cls, 'haplotype_alleles', {}): # Currently suboptimal: should be eg: 'if variant.is_haplotype:' 

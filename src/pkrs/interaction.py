@@ -90,7 +90,7 @@ class Interaction(RiskScore):
 
 		rsids = cls.pat_rsid.findall(str(variant.rsID))
 		effect_allele = cls.complex_alleles.get(str(variant.effect_allele), str(variant.effect_allele))
-		genotypes = cls.pat_genotype.split(effect_allele)
+		genotypes = cls.pat_genotype.split(effect_allele)[1:3]
 		for rsid,genotype in zip(rsids, genotypes):
 			try:
 				branches.append(Genotype(rsid=rsid, genotype=genotype, build=build))
