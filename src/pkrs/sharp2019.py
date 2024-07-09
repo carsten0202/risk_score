@@ -80,7 +80,7 @@ class Sharp2019(Interaction):
 		for allele, genotypes in sample_data.items():
 			# For simplicity, assume genotype is a tuple of alleles (e.g., (0, 1) or (1, 1))
 			if allele in self.haplotype:
-				hap_score.append(self.haplotype.get(allele, 0) * sum(genotypes))
+				hap_score.extend([self.haplotype.get(allele, 0)] * sum(genotypes))
 				logger.debug(f"calc_haplotype: {allele} found. Current scores = {hap_score}")
 		hap_score = self.haplotype_func(hap_score)
 		logger.debug(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
