@@ -47,9 +47,13 @@ class Interaction(RiskScore):
 
 	def calc(self, sample_data):
 		"""Overload calc to handle interactions"""
-		prs_score = super().calc(sample_data=sample_data)
-		int_score = self.calc_interaction(sample_data=sample_data)
-		return prs_score + int_score
+		try:
+			prs_score = super().calc(sample_data=sample_data)
+			int_score = self.calc_interaction(sample_data=sample_data)
+			logger.debug(f"calc: Sample/Allelic/Interaction/Total = {sample_data.sample}\t{prs_score}\t{int_score}\t{prs_score + int_score}")
+			return prs_score + int_score
+		except TypeError:
+			return "NA"
 
 	def calc_interaction(self, sample_data):
 		"""Calculate the interaction part of the score."""

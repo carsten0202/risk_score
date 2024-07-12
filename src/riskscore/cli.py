@@ -133,7 +133,7 @@ oram2016_weights_default = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', None)
 @click.option('-n','--denominator', type=click.FLOAT, default=58, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_ORAM2016_WEIGHTS', default=oram2016_weights_default, required=True, help=OPTION.weights, show_default=True)
 def oram2016(denominator, pgs, vcf):
-	"""Calculate Gene Risk Score based on Oram et al 2016.
+	"""Calculate T1D Risk Score based on Oram et al 2016.
 
 \b
 A type 1 diabetes genetic risk score can aid discrimination between type 1 and
@@ -150,10 +150,11 @@ https://doi.org/10.2337/dc15-1111
 
 sharp2019_weights_default = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', None)
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-n','--denominator', type=click.FLOAT, default=1, show_default=True, help=OPTION.n)
+@click.option('-c', '--conflict', type=click.Choice(['Max','Mean','Remove'], case_sensitive=False), default="Max", show_default=True, help="Handling of weight calculation when more than the maximum haplotypes are inferred. Choose maximum score, mean score or remove subject.")
+@click.option('-n', '--denominator', type=click.FLOAT, default=1, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_SHARP2019_WEIGHTS', default=sharp2019_weights_default, required=True, help=OPTION.weights, show_default=True)
-def sharp2019(denominator, pgs, vcf):
-	"""Calculate Gene Risk Score based on Sharp et al 2019.
+def sharp2019(conflict, denominator, pgs, vcf):
+	"""Calculate T1D Risk Score based on Sharp et al 2019.
 
 \b
 Development and standardization of an improved type 1 diabetes genetic risk
@@ -163,8 +164,19 @@ JM Locke, JT, MN Weedon, WA Hagopian, RA Oram.
 Diabetes Care 2019 Feb; 42(2): 200-207.
 https://doi.org/10.2337/dc18-1785
 """
+	logging.debug(f" Haplotype conflict resolution = {conflict}")
+	if (conflict == "Max"):
+		int_func = max
+		hap_func = lambda x: sum(sorted(x, reverse=True)[0:2])
+	elif (conflict == "Remove"):
+		int_func = lambda x: "NA" if len(x) > 1 else sum(x)
+		hap_func = lambda x: "NA" if len(x) > 2 else sum(x)
+	elif (conflict == "Mean"):
+		int_func = lambda x: sum(x) / len(x)
+		hap_func = lambda x: sum(x) if len(x) <= 1 else 2 * sum(x) / len(x)
+
 	from pkrs import Sharp2019
-	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=max)
+	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=int_func, haplotype_func=hap_func)
 	calc_and_report(rs, vcf)
 
 

@@ -69,10 +69,15 @@ class Sharp2019(Interaction):
 
 	def calc(self, sample_data):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair (Table S1)."""
-		prs_score = super(Interaction, self).calc(sample_data=sample_data)
-		int_score = self.calc_interaction(sample_data=sample_data)
-		hap_score = 0 if int_score else self.calc_haplotype(sample_data=sample_data)
-		return prs_score + int_score + hap_score
+		try:
+			prs_score = super(Interaction, self).calc(sample_data=sample_data)
+			int_score = self.calc_interaction(sample_data=sample_data)
+			hap_score = 0 if int_score else self.calc_haplotype(sample_data=sample_data)
+			logger.debug(f"calc: Sample/Allelic/Interaction/Haplotype/Total = {sample_data.sample}\t{prs_score}\t{int_score}\t{hap_score}\t{prs_score + int_score + hap_score}")
+			return prs_score + int_score + hap_score
+		except TypeError:
+			return "NA"
+
 
 	def calc_haplotype(self, sample_data):
 		"""Calculate the haplotype component from Sharp2019 TableS1. Should only be done when *no* interaction is present. See Figure S2."""
