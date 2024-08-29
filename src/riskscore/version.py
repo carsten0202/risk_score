@@ -11,4 +11,4 @@ __version__ = """2.1.0"""
 # Notes and TODOs:
 # TODO: Could integrate the database code from snptool to speedup translation between rsid and pos
 # TODO: When reading from VCF we should include an option for selecting the field you want; eg GT or DS, etc.
-# TODO: Where should we put score files downloaded with pgscatalog tools? Currently they end in '.', which may be ok?
+# TODO: Where should we put score files downloaded with pgscatalog tools? Currently they end in '.', (which may be ok?)
