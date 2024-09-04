@@ -65,14 +65,16 @@ rs2187668,rs7454108   C/T:T/C         3.87
 """,
 )
 
-OPTION = namedtuple('Options', ['geno','info','log','n','pgs','vcf','weights','multiweights'])(
-	geno = """Geno file of the type created by SNPextractor.""",
-	info = """Info file of the type created by SNPextractor.""",
-	log  = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
-	n    = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation.""",
-	pgs  = """Risk score file obtained from the PGSCatalog. See: https://www.pgscatalog.org/.""",
-	vcf  = """Read sample genotypes from VCF File as input.""",
-	weights = """Risk score file, possibly obtained from the PGSCatalog. See description below on 'Column-Based Datafiles'.\n""",
+OPTION = namedtuple('Options', ['conflict','geno','info','log','logfile','n','pgs','vcf','weights','multiweights'])(
+	conflict = """Handling of weight calculation when more than the maximum haplotypes are inferred. 'ignore' sets subject score to NA. 'Rank' uses the background frequencies from .. discarding the least common haplotypes.""",
+	geno     = """Geno file of the type created by SNPextractor.""",
+	info     = """Info file of the type created by SNPextractor.""",
+	log      = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
+	logfile  = """Write log to FILE.""",
+	n        = """The denominator to use in calculating the arithmetric mean of scores. Set to '1' to disable mean calculation.""",
+	pgs      = """Risk score file obtained from the PGSCatalog. See: https://www.pgscatalog.org/.""",
+	vcf      = """Read sample genotypes from VCF File as input.""",
+	weights  = """Risk score file, possibly obtained from the PGSCatalog. See description below on 'Column-Based Datafiles'.\n""",
 	multiweights = """Multi-locus risk weights file. See format description below on 'Column-Based Datafiles'.\n"""
 )
 
@@ -103,9 +105,10 @@ class IntCommand(StdCommand):
 
 @click.group()
 @click.version_option(version=__version__)
-@click.option('--dbsnp', help="what dbsnp should we use?")
+#@click.option('--dbsnp', help="what dbsnp should we use?")
 @click.option('--log', default="warning", help=OPTION.log, show_default=True)
-def main(dbsnp, log):
+@click.option('--logfile', type=str, default=None, show_default="STDERR", help=OPTION.logfile)
+def main(log, logfile):
 	"""Calculate a Genetic Risk Score (GRS) for a list of subjects based on predefined weighted risks."""
 	# Clear existing loggers...
 	for handler in logging.root.handlers[:]:
@@ -114,15 +117,15 @@ def main(dbsnp, log):
 		log_num = getattr(logging, log.upper())
 	except AttributeError:
 		raise ValueError(f"Invalid log level: '{log}'")
-	logging.basicConfig(level=log_num)
+	logging.basicConfig(filename=logfile, filemode='w', level=log_num)
+	logging.info(f"Logging set to level={log_num}, filename={logfile}")
 
 
 @main.command(cls=IntCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, help=OPTION.n)
-@click.option('-w','--pgs','--weights', type=click.PGSFile(), default=None, help=OPTION.weights)
+@click.option('-w','--pgs','--weights', type=click.PGSFile(), required=True, help=OPTION.weights)
 def aggregate(denominator, pgs, vcf):
 	"""Calculate Aggregated (linear) Risk Score from user-provided weights."""
-	assert pgs, f"ERROR: You must specify a weights file."
 	from pkrs import RiskScore
 	rs = RiskScore.FromPGS(pgs, N=denominator)
 	calc_and_report(rs, vcf)
@@ -150,7 +153,7 @@ https://doi.org/10.2337/dc15-1111
 
 sharp2019_weights_default = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', None)
 @main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-c', '--conflict', type=click.Choice(['Max','Mean','Remove'], case_sensitive=False), default="Max", show_default=True, help="Handling of weight calculation when more than the maximum haplotypes are inferred. Choose maximum score, mean score or remove subject.")
+@click.option('-c', '--conflict', type=click.Choice(['Max','Mean','Ignore','Rank'], case_sensitive=False), default="Ignore", show_default=True, help=OPTION.conflict)
 @click.option('-n', '--denominator', type=click.FLOAT, default=1, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_SHARP2019_WEIGHTS', default=sharp2019_weights_default, required=True, help=OPTION.weights, show_default=True)
 def sharp2019(conflict, denominator, pgs, vcf):
@@ -168,12 +171,17 @@ https://doi.org/10.2337/dc18-1785
 	if (conflict == "Max"):
 		int_func = max
 		hap_func = lambda x: sum(sorted(x, reverse=True)[0:2])
-	elif (conflict == "Remove"):
+	elif (conflict == "Ignore"):
 		int_func = lambda x: "NA" if len(x) > 1 else sum(x)
 		hap_func = lambda x: "NA" if len(x) > 2 else sum(x)
 	elif (conflict == "Mean"):
 		int_func = lambda x: sum(x) / len(x)
 		hap_func = lambda x: sum(x) if len(x) <= 1 else 2 * sum(x) / len(x)
+	elif (conflict == "Rank"):
+		# Setting up the sorting - The index from table below is what we should sort on (Though we will need to round the shit to avoid real mis/match snafus)
+		klitz_sort = lambda x: [2.31, -0.24, 3.63, -1.94, 0.05, 0.17, -0.51, 0.17, 2.16, -0.69, 1.08, -0.65, 1.06, -1.47, 3.14, -0.87, 0.61, -1.15].index(round(x, 2))
+		int_func = lambda x: sorted(x, key=klitz_sort)[0]
+		hap_func = lambda x: sum(sorted(x, reverse=True)[0:2]) # Yes, by chance the frequencies and beta weights correlate, so highest is most frequent
 
 	from pkrs import Sharp2019
 	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=int_func, haplotype_func=hap_func)

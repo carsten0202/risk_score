@@ -58,7 +58,7 @@ class SampleAlleles(MutableMapping):
 		return self._store[key]
 
 	def __repr__(self):
-		return f"Sample{self._store}"
+		return f"{self.sample}"
 
 	def __setitem__(self, key, value):
 		self._store[key] = value

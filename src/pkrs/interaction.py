@@ -50,20 +50,28 @@ class Interaction(RiskScore):
 		try:
 			prs_score = super().calc(sample_data=sample_data)
 			int_score = self.calc_interaction(sample_data=sample_data)
-			logger.debug(f"calc: Sample/Allelic/Interaction/Total = {sample_data.sample}\t{prs_score}\t{int_score}\t{prs_score + int_score}")
+			logger.debug(f"calc: Sample/Allelic/Interaction/Total = {sample_data}\t{prs_score}\t{int_score}\t{prs_score + int_score}")
 			return prs_score + int_score
 		except TypeError:
 			return "NA"
 
 	def calc_interaction(self, sample_data):
 		"""Calculate the interaction part of the score."""
-		logger.debug(f"calc_interaction: Sample={sample_data.sample}, Scanning alleles={self.interaction}")
+		logger.debug(f"calc_interaction: Sample={sample_data}, Scanning alleles={self.interaction}")
 		try:
-			int_score = self.interaction_func(self.traverse_interactions(sample_data))
-			logger.debug(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = {int_score}")
+			if int_score := self.traverse_interactions(sample_data):
+				if len(int_score) > 1:
+					logger.warning(f" Spurious HLA imputation found for Sample={sample_data}")
+				klitz_sort = lambda x: [2.31, -0.24, 3.63, -1.94, 0.05, 0.17, -0.51, 0.17, 2.16, -0.69, 1.08, -0.65, 1.06, -1.47, 3.14, -0.87, 0.61, -1.15].index(round(x, 2))
+				logger.warning(f"{int_score} - {sorted(int_score, key=klitz_sort)}")
+				int_score = self.interaction_func(int_score)
+				logger.warning(f"{sample_data} - {int_score}")
+			else:
+				int_score = 0
+			logger.debug(f"calc_interaction: Sample={sample_data}, Interaction Sum = {int_score}")
 			return int_score / self.N
 		except ValueError:
-			logger.debug(f"calc_interaction: Sample={sample_data.sample}, Interaction Sum = 0")
+			logger.debug(f"calc_interaction: Sample={sample_data}, Interaction Sum = 0")
 			return 0
 
 	def traverse_interactions(self, sample_alleles):

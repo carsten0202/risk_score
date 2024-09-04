@@ -73,22 +73,23 @@ class Sharp2019(Interaction):
 			prs_score = super(Interaction, self).calc(sample_data=sample_data)
 			int_score = self.calc_interaction(sample_data=sample_data)
 			hap_score = 0 if int_score else self.calc_haplotype(sample_data=sample_data)
-			logger.debug(f"calc: Sample/Allelic/Interaction/Haplotype/Total = {sample_data.sample}\t{prs_score}\t{int_score}\t{hap_score}\t{prs_score + int_score + hap_score}")
+			logger.debug(f"calc: Sample/Allelic/Interaction/Haplotype/Total = {sample_data}\t{prs_score}\t{int_score}\t{hap_score}\t{prs_score + int_score + hap_score}")
 			return prs_score + int_score + hap_score
 		except TypeError:
 			return "NA"
 
-
 	def calc_haplotype(self, sample_data):
-		"""Calculate the haplotype component from Sharp2019 TableS1. Should only be done when *no* interaction is present. See Figure S2."""
+		"""Calculate the haplotype component from Sharp2019 TableS1. Should only be done when *no* interaction is present. See Sharp2019 Figure S2."""
 		hap_score = []
 		for allele, genotypes in sample_data.items():
 			# For simplicity, assume genotype is a tuple of alleles (e.g., (0, 1) or (1, 1))
 			if allele in self.haplotype:
 				hap_score.extend([self.haplotype.get(allele, 0)] * sum(genotypes))
 				logger.debug(f"calc_haplotype: {allele} found. Current scores = {hap_score}")
+		if len(hap_score) > 2:
+			logger.warning(f" Spurious HLA imputation found for Sample={sample_data}")
 		hap_score = self.haplotype_func(hap_score)
-		logger.debug(f"calc_haplotype: Sample={sample_data.sample}, Haplotype Sum = {hap_score}")
+		logger.debug(f"calc_haplotype: Sample={sample_data}, Haplotype Sum = {hap_score}")
 		return hap_score / self.N
 
 	@classmethod
