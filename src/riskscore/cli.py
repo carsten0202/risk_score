@@ -12,7 +12,7 @@ import sys
 import pklib.pkclick as click
 from riskscore.version import __version__
 
-EPILOG = namedtuple('Options', ['fileformat','multiformat','legal'])(
+EPILOG = namedtuple('Options', ['fileformat','multiformat','klitz','legal'])(
 fileformat = """
 
 VARIANT MATCHING:
@@ -24,10 +24,21 @@ COLUMN-BASED DATAFILES:
 
 Accepted input is either a PGS accession, which is then downloaded from the catalog, or a tabular file formatted
 according to the PGS standard. Column separators are auto-detected from the input and should work for tab-separated
-files, comma-seperated (csv) files, and space-separated files. Columns with unrecognized names are ignored.
+files, comma-seperated (csv) files, and space-separated files. Columns with unrecognized column names are ignored.
 
 \b
 https://www.pgscatalog.org/downloads/#dl_scoring_files
+
+""",
+klitz = """
+
+Klitz2003 REFERENCE:
+
+New HLA haplotype frequency reference standards: high-resolution and large sample typing of HLA DR-DQ haplotypes in a
+sample of European Americans
+W Klitz, M Maiers, S Spellman, LA Baxter-Lowe, B Schmeckpeper, TM Williams, M Fernandez-Viña
+Tissue Antigens 2003 Oct; 62(4): 296-307.
+https://doi.org/10.1034/j.1399-0039.2003.00103.x
 
 """,
 legal = """
@@ -66,7 +77,8 @@ rs2187668,rs7454108   C/T:T/C         3.87
 )
 
 OPTION = namedtuple('Options', ['conflict','geno','info','log','logfile','n','pgs','vcf','weights','multiweights'])(
-	conflict = """Handling of weight calculation when more than the maximum haplotypes are inferred. 'ignore' sets subject score to NA. 'Rank' uses the background frequencies from .. discarding the least common haplotypes.""",
+	conflict = """Conflict handling of weight calculation when more than the maximum two haplotypes are inferred. 'ignore' sets subject
+				  score to NA. 'Rank' uses the background frequencies from Klitz2003 discarding the least common haplotypes.""",
 	geno     = """Geno file of the type created by SNPextractor.""",
 	info     = """Info file of the type created by SNPextractor.""",
 	log      = """Control logging. Valid levels: 'debug', 'info', 'warning', 'error', 'critical'.""",
@@ -100,8 +112,12 @@ class StdCommand(click.Command):
 class IntCommand(StdCommand):
 	def __init__(self, *args, epilog=None, **kwargs):
 		super().__init__(*args, **kwargs)
-		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.legal
+		self.epilog = EPILOG.fileformat + EPILOG.multiformat
 
+class HapCommand(IntCommand):
+	def __init__(self, *args, epilog=None, **kwargs):
+		super().__init__(*args, **kwargs)
+#		self.epilog = EPILOG.fileformat + EPILOG.multiformat + EPILOG.klitz
 
 @click.group()
 @click.version_option(version=__version__)
@@ -132,7 +148,7 @@ def aggregate(denominator, pgs, vcf):
 
 
 oram2016_weights_default = os.environ.get('RISKSCORE_ORAM2016_WEIGHTS', None)
-@main.command(cls=StdCommand, no_args_is_help=True)
+@main.command(cls=IntCommand, no_args_is_help=True)
 @click.option('-n','--denominator', type=click.FLOAT, default=58, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_ORAM2016_WEIGHTS', default=oram2016_weights_default, required=True, help=OPTION.weights, show_default=True)
 def oram2016(denominator, pgs, vcf):
@@ -152,8 +168,8 @@ https://doi.org/10.2337/dc15-1111
 
 
 sharp2019_weights_default = os.environ.get('RISKSCORE_SHARP2019_WEIGHTS', None)
-@main.command(cls=StdCommand, no_args_is_help=True)
-@click.option('-c', '--conflict', type=click.Choice(['Max','Mean','Ignore','Rank'], case_sensitive=False), default="Ignore", show_default=True, help=OPTION.conflict)
+@main.command(cls=HapCommand, no_args_is_help=True)
+@click.option('-c', '--conflict', type=click.Choice(['Max','Ignore','Rank'], case_sensitive=False), default="Ignore", show_default=True, help=OPTION.conflict)
 @click.option('-n', '--denominator', type=click.FLOAT, default=1, show_default=True, help=OPTION.n)
 @click.option('-w', '--pgs', '--weights', type=click.PGSFile(), envvar='RISKSCORE_SHARP2019_WEIGHTS', default=sharp2019_weights_default, required=True, help=OPTION.weights, show_default=True)
 def sharp2019(conflict, denominator, pgs, vcf):
@@ -174,17 +190,16 @@ https://doi.org/10.2337/dc18-1785
 	elif (conflict == "Ignore"):
 		int_func = lambda x: "NA" if len(x) > 1 else sum(x)
 		hap_func = lambda x: "NA" if len(x) > 2 else sum(x)
-	elif (conflict == "Mean"):
-		int_func = lambda x: sum(x) / len(x)
-		hap_func = lambda x: sum(x) if len(x) <= 1 else 2 * sum(x) / len(x)
 	elif (conflict == "Rank"):
+		# Klitz is set True in riskscore and handled internally. We just need to sum here.
+		int_func = sum
+		hap_func = sum
 		# Setting up the sorting - The index from table below is what we should sort on (Though we will need to round the shit to avoid real mis/match snafus)
-		klitz_sort = lambda x: [2.31, -0.24, 3.63, -1.94, 0.05, 0.17, -0.51, 0.17, 2.16, -0.69, 1.08, -0.65, 1.06, -1.47, 3.14, -0.87, 0.61, -1.15].index(round(x, 2))
-		int_func = lambda x: sorted(x, key=klitz_sort)[0]
-		hap_func = lambda x: sum(sorted(x, reverse=True)[0:2]) # Yes, by chance the frequencies and beta weights correlate, so highest is most frequent
-
+#		klitz_sort = lambda x: [2.31, -0.24, 3.63, -1.97, -1.94, 0.06, 0.05, 0.17, -0.51, 2.16, -0.69, 1.09, 1.08, -0.65, 1.06, -1.47, 3.14, -0.87, 0.61, 1.14, -1.15].index(round(x, 2))
+#		int_func = lambda x: sorted(x, key=klitz_sort)[0]
+#		hap_func = lambda x: sum(sorted(x, reverse=True)[0:2]) # Yes, by chance the frequencies and beta weights correlate, so highest is most frequent
 	from pkrs import Sharp2019
-	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=int_func, haplotype_func=hap_func)
+	rs = Sharp2019.FromPGS(pgs, N=denominator, interaction_func=int_func, haplotype_func=hap_func, klitz=conflict=="Rank")
 	calc_and_report(rs, vcf)
 
 
@@ -237,7 +252,7 @@ def calc_and_report(rs, vcf):
 	from pksnp import PopulationAlleles
 	population = PopulationAlleles(vcf, filter_ids=rs.rsids)
 	for sample, alleles in population.items():
-		logging.debug(f" Processing sample={sample} with alleles={alleles}")
+		logging.debug(f" Processing sample={sample} with alleles={alleles.alleles}")
 		score = rs.calc(alleles)
 		logging.debug(f" Sample = {sample}; Total Score = {score}")
 		print(f"{sample}\t{score}")

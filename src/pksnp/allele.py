@@ -8,14 +8,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# There is no proper support for dosage scores in the script yet, but we could add it. Will likely need a dosage class:
-# Will probably want to extend float on this one. Look here for some inspiration:
-# https://stackoverflow.com/questions/25022079/extend-python-build-in-class-float
+# This is intended as a hashable allele to be used as key in a {allele:call} dict structure
         
 class Allele:
     """
-    Class to hold an Allele. Can be used as key in e.g. dict(key) = (gt or dosage) or dict(key) = risk_weight
-	Must be immutable; do not change after __init__
+    Class to hold an Allele. Can be used as key in e.g. dict(key) = (call) or dict(key) = risk_weight
+	Must be immutable; DO NOT change after __init__
 
     chromosome (str): The chromosome
     position (int): Chromosomal position

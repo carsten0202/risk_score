@@ -62,10 +62,7 @@ class Interaction(RiskScore):
 			if int_score := self.traverse_interactions(sample_data):
 				if len(int_score) > 1:
 					logger.warning(f" Spurious HLA imputation found for Sample={sample_data}")
-				klitz_sort = lambda x: [2.31, -0.24, 3.63, -1.94, 0.05, 0.17, -0.51, 0.17, 2.16, -0.69, 1.08, -0.65, 1.06, -1.47, 3.14, -0.87, 0.61, -1.15].index(round(x, 2))
-				logger.warning(f"{int_score} - {sorted(int_score, key=klitz_sort)}")
 				int_score = self.interaction_func(int_score)
-				logger.warning(f"{sample_data} - {int_score}")
 			else:
 				int_score = 0
 			logger.debug(f"calc_interaction: Sample={sample_data}, Interaction Sum = {int_score}")

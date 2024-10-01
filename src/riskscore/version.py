@@ -9,6 +9,7 @@ __version__ = """2.1.0"""
 # v2.1.0: Added option to control haplotype conflicts in Sharp2019
 # v2.2.0: Added option to save the log in a file
 # v2.2.1: Fixed some bugs caused by int_score sometimes being an empty list
+# v2.3.0: Added the Call class and fixed several bugs in handling Haplotype inferrence
 
 # Notes and TODOs:
 # TODO: Could integrate the database code from snptool to speedup translation between rsid and pos

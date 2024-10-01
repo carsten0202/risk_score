@@ -55,10 +55,20 @@ class Sharp2019(Interaction):
 		"HLA-DQA1*01:03;HLA-DQB1*06:01": "A",
 	}
 
-	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, haplotype_func=lambda x: sum(sorted(x, reverse=True)[0:2]), **kwargs):
+	def __init__(self, *args, haplotype={}, N=1, interaction_func=max, haplotype_func=lambda x: sum(sorted(x, reverse=True)[0:2]), klitz:bool=False, **kwargs):
+		"""
+		A Class that holds a calculator for Sharp2019 riskscore for Type-1 Diabetes.
+
+		haplotype (dict):
+		N (int):                 Denominator for the post-scaling of the weights (True Sharp2019 has no scaling, N=1)
+		interaction_func (func): Function to post-process interaction weight calculations
+		haplotype_func (func):   Function to post-process haplotype weight calculations
+		klitz (bool):            Should Klitz2003 frequencies for DQA1-DQB1 Haplotypes be used to resolve spurious haplotype inferences?
+		"""
 		super().__init__(*args, N=N, interaction_func=interaction_func, **kwargs)
 		self.haplotype = {key: float(value) for key, value in haplotype.items()}
 		self.haplotype_func = haplotype_func
+		self.klitz = klitz
 
 	@property
 	def rsids(self):
@@ -69,22 +79,23 @@ class Sharp2019(Interaction):
 
 	def calc(self, sample_data):
 		"""From Sharp2019: For haplotypes with an interaction the beta is taken from Table S3, without an interaction it is scored independently for each haplotype of the pair (Table S1)."""
+		from pksnp import HaplotypeError
 		try:
 			prs_score = super(Interaction, self).calc(sample_data=sample_data)
-			int_score = self.calc_interaction(sample_data=sample_data)
-			hap_score = 0 if int_score else self.calc_haplotype(sample_data=sample_data)
+			int_score = self.calc_interaction(sample_data=sample_data.Sharp_DQ_markers(klitz = self.klitz))
+			hap_score = 0 if int_score else self.calc_haplotype(sample_data=sample_data.Sharp_DQ_markers(klitz = self.klitz))
 			logger.debug(f"calc: Sample/Allelic/Interaction/Haplotype/Total = {sample_data}\t{prs_score}\t{int_score}\t{hap_score}\t{prs_score + int_score + hap_score}")
 			return prs_score + int_score + hap_score
-		except TypeError:
+		except (TypeError, HaplotypeError):
 			return "NA"
 
 	def calc_haplotype(self, sample_data):
 		"""Calculate the haplotype component from Sharp2019 TableS1. Should only be done when *no* interaction is present. See Sharp2019 Figure S2."""
 		hap_score = []
-		for allele, genotypes in sample_data.items():
-			# For simplicity, assume genotype is a tuple of alleles (e.g., (0, 1) or (1, 1))
+		for allele, call in sample_data.items():
+			# allele and call should be Allele and Call classes
 			if allele in self.haplotype:
-				hap_score.extend([self.haplotype.get(allele, 0)] * sum(genotypes))
+				hap_score.extend([self.haplotype.get(allele, 0)] * sum(call))
 				logger.debug(f"calc_haplotype: {allele} found. Current scores = {hap_score}")
 		if len(hap_score) > 2:
 			logger.warning(f" Spurious HLA imputation found for Sample={sample_data}")

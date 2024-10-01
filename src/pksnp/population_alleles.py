@@ -8,7 +8,7 @@ from collections.abc import MutableMapping
 import logging
 from pysam import VariantFile
 
-from . import Allele, SampleAlleles
+from . import Allele, Call, SampleAlleles
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class PopulationAlleles(MutableMapping):
 	_store: A dictionary where keys are sample names and values are dictionaries of Allele objects and sample genotypes.
 	samples: A list(str) with the names of samples
 	"""
-	def __init__(self, variantfile, build=None, filter_ids=None):
+	def __init__(self, variantfile, build=None, filter_ids=None, format_field='GT'):
 		"""
 		Parses a VCF file and transposes the data to allow access by sample.
 
@@ -38,18 +38,21 @@ class PopulationAlleles(MutableMapping):
 		self.samples = variantfile.header.samples
 		self.update({sample: defaultdict(list) for sample in self.samples})
 
-		# Read varaints
+		# Read variants
 		for record in variantfile:
 			# if we add rsid translation, then we likely add it here...
 			if filter_ids and record.id not in filter_ids:
 				continue
 			self.variants.append(record.id)
+			alleles = [record.ref] + list(record.alts)
 			for sample in self:
-				alleles = [record.ref] + list(record.alts)
-				genotype = [alleles[nuc] for nuc in record.samples[sample]['GT']]
-				assert len(genotype)==2, f"Sample {sample} is not biallelic!"
-				for allele in genotype:
-					self._store[sample][Allele(chromosome=record.chrom, position=record.pos, rsid=record.id, allele=allele)].append(1)
+				for (i,a) in enumerate(alleles):
+					self._store[sample][Allele(chromosome=record.chrom, position=record.pos, rsid=record.id, allele=a)]=Call(i, **{format_field:record.samples[sample][format_field]})
+
+				# genotype = [alleles[nuc] for nuc in record.samples[sample]['GT']]
+				# assert len(genotype)==2, f"ERROR: Sample={sample}, genotype={genotype} - is not biallelic!"
+				# for allele in genotype:
+				# 	self._store[sample][Allele(chromosome=record.chrom, position=record.pos, rsid=record.id, allele=allele)].append(1)
 
 		# Validate variants
 		logger.info(f" Read {len(self.variants)} variants from file '{variantfile.filename}")

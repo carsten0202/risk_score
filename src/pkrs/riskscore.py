@@ -52,10 +52,10 @@ class RiskScore:
 		dict: A score?
 		"""
 		prs_score = 0.0
-		for allele, genotypes in sample_data.items():
-			# For simplicity, assume genotype is a tuple of alleles (e.g., (0, 1) or (1, 1))
+		for allele, call in sample_data.items():
+			# allele and call should be Allele and Call classes
 			if allele in self.weights:
-				prs_score += self.weights.get(allele, 0) * sum(genotypes)
+				prs_score += self.weights.get(allele, 0) * sum(call)
 				logger.debug(f"calc: {allele} found. Current Sum = {prs_score}")
 		logger.debug(f"calc: Sample={sample_data.sample}, Allelic Sum = {prs_score}")
 		return prs_score / self.N
